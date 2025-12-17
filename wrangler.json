@@ -1,0 +1,16 @@
+{
+  "compatibility_date": "2025-10-08",
+  "main": "src/index.ts",
+  "name": "team-admin",
+  "upload_source_maps": true,
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_id": "f3f4e85c-0f04-415c-bc80-430483601f57",
+      "database_name": "emelab-database"
+    }
+  ],
+  "observability": {
+    "enabled": true
+  }
+}

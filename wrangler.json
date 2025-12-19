@@ -3,6 +3,16 @@
   "main": "src/index.ts",
   "name": "team-admin",
   "upload_source_maps": true,
+  "vars": {
+    "DISCORD_WEBHOOK_URL": ""
+  },
+  "r2_buckets": [
+    {
+      "binding": "DOCS_BUCKET",
+      "bucket_name": "team-admin-docs",
+      "preview_bucket_name": "team-admin-docs-preview"
+    }
+  ],
   "d1_databases": [
     {
       "binding": "DB",

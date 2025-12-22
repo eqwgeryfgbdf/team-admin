@@ -104,6 +104,16 @@ async function pbkdf2Hash(password: string, saltB64Url: string): Promise<string>
   return base64UrlFromBytes(new Uint8Array(bits));
 }
 
+function generateRandomPassword(length: number = 16): string {
+  const charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*";
+  const randomValues = crypto.getRandomValues(new Uint8Array(length));
+  let password = "";
+  for (let i = 0; i < length; i++) {
+    password += charset[randomValues[i] % charset.length];
+  }
+  return password;
+}
+
 async function hashPasswordNewSalt(password: string): Promise<{ salt: string; hash: string }> {
   const saltBytes = crypto.getRandomValues(new Uint8Array(16));
   const salt = base64UrlFromBytes(saltBytes);
@@ -146,7 +156,8 @@ async function getSession(env: Env, request: Request): Promise<AuthedSession | n
       u.email as email,
       u.display_name as display_name,
       u.role as role,
-      u.is_active as is_active
+      u.is_active as is_active,
+      u.must_change_password as must_change_password
      FROM sessions s
      JOIN users u ON u.id = s.user_id
      WHERE s.id = ?
@@ -163,6 +174,7 @@ async function getSession(env: Env, request: Request): Promise<AuthedSession | n
         display_name: string;
         role: "admin" | "member";
         is_active: number;
+        must_change_password: number;
       }
     | null;
 
@@ -445,7 +457,7 @@ export default {
         }
 
         const row = (await env.DB.prepare(
-          `SELECT id, email, password_hash, password_salt, role, display_name, is_active
+          `SELECT id, email, password_hash, password_salt, role, display_name, is_active, must_change_password
            FROM users
            WHERE email = ?
            LIMIT 1`
@@ -460,6 +472,7 @@ export default {
               role: "admin" | "member";
               display_name: string;
               is_active: number;
+              must_change_password: number;
             }
           | null;
 
@@ -489,7 +502,13 @@ export default {
         const { sessionId, csrfToken } = await createSession(env, row.id);
         const headers = new Headers();
         headers.append("set-cookie", setCookieHeader(SESSION_COOKIE_NAME, sessionId, { maxAgeSeconds: 60 * 60 * 24 * SESSION_TTL_DAYS }));
-        headers.set("location", "/app");
+        
+        // 如果用户需要更改密码，重定向到强制更改密码页面
+        if (row.must_change_password) {
+          headers.set("location", "/change-password-required");
+        } else {
+          headers.set("location", "/app");
+        }
         return new Response(null, { status: 302, headers });
       }
 
@@ -518,6 +537,58 @@ export default {
 
       // Protected routes below
       requireAuth(session);
+
+      // 强制更改密码页面（如果用户需要更改密码，必须访问此页面）
+      if (pathname === "/change-password-required" && request.method === "GET") {
+        // 检查用户是否需要更改密码
+        const userRow = (await env.DB.prepare(
+          "SELECT must_change_password FROM users WHERE id = ? LIMIT 1"
+        )
+          .bind(session.user.id)
+          .first()) as { must_change_password: number } | null;
+        
+        if (!userRow || !userRow.must_change_password) {
+          return redirect("/app");
+        }
+
+        return htmlResponse(
+          renderLayout({
+            title: "必須更改密碼",
+            user: session.user,
+            csrfToken: session.csrfToken,
+            body: renderChangePasswordRequiredForm({ csrfToken: session.csrfToken }),
+          })
+        );
+      }
+
+      if (pathname === "/change-password-required" && request.method === "POST") {
+        const form = await readForm(request);
+        assertCsrf(form, session);
+        const password = getString(form, "password");
+        const password2 = getString(form, "password_confirm");
+        
+        if (password.length < 8) throw new HttpError(400, "密碼至少 8 碼");
+        if (password !== password2) throw new HttpError(400, "兩次輸入的密碼不一致");
+
+        const { salt, hash } = await hashPasswordNewSalt(password);
+        // 更新密码并清除 must_change_password 标记
+        await env.DB.prepare("UPDATE users SET password_hash = ?, password_salt = ?, must_change_password = 0 WHERE id = ?")
+          .bind(hash, salt, session.user.id)
+          .run();
+
+        return redirect("/app");
+      }
+
+      // 如果用户需要更改密码，除了更改密码页面外，重定向到更改密码页面
+      const userRow = (await env.DB.prepare(
+        "SELECT must_change_password FROM users WHERE id = ? LIMIT 1"
+      )
+        .bind(session.user.id)
+        .first()) as { must_change_password: number } | null;
+      
+      if (userRow && userRow.must_change_password && pathname !== "/change-password-required" && pathname !== "/logout") {
+        return redirect("/change-password-required");
+      }
 
       if (pathname === "/app" && request.method === "GET") {
         const events = (await env.DB.prepare(
@@ -616,7 +687,14 @@ export default {
         const email = normalizeEmail(getString(form, "email"));
         const displayName = getString(form, "display_name") || email;
         const role = (getString(form, "role") === "admin" ? "admin" : "member") as "admin" | "member";
-        const password = getString(form, "password");
+        let password = getString(form, "password");
+        
+        // 如果密码为空或未提供，自动生成随机密码
+        const useRandomPassword = !password || password.length === 0;
+        if (useRandomPassword) {
+          password = generateRandomPassword(16);
+        }
+        
         if (!isEmail(email)) throw new HttpError(400, "Email 格式不正確");
         if (password.length < 8) throw new HttpError(400, "密碼至少 8 碼");
 
@@ -628,12 +706,26 @@ export default {
         const { salt, hash } = await hashPasswordNewSalt(password);
         const userId = crypto.randomUUID();
         const ts = nowMs();
+        // 如果使用随机密码，设置 must_change_password = 1
+        const mustChangePassword = useRandomPassword ? 1 : 0;
         await env.DB.prepare(
-          `INSERT INTO users (id, email, password_hash, password_salt, role, display_name, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?)`
+          `INSERT INTO users (id, email, password_hash, password_salt, role, display_name, created_at, must_change_password)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
         )
-          .bind(userId, email, hash, salt, role, displayName, ts)
+          .bind(userId, email, hash, salt, role, displayName, ts, mustChangePassword)
           .run();
+
+        // 如果使用随机密码，显示生成的密码给管理员
+        if (useRandomPassword) {
+          return htmlResponse(
+            renderLayout({
+              title: "成員已建立",
+              user: session.user,
+              csrfToken: session.csrfToken,
+              body: renderMemberCreatedSuccess({ email, displayName, generatedPassword: password }),
+            })
+          );
+        }
 
         return redirect("/members");
       }
@@ -702,9 +794,15 @@ export default {
             if (password.length < 8) throw new HttpError(400, "密碼至少 8 碼");
             if (password !== password2) throw new HttpError(400, "兩次輸入的密碼不一致");
             const { salt, hash } = await hashPasswordNewSalt(password);
-            await env.DB.prepare("UPDATE users SET password_hash = ?, password_salt = ? WHERE id = ?")
+            // 更改密码后，清除 must_change_password 标记
+            await env.DB.prepare("UPDATE users SET password_hash = ?, password_salt = ?, must_change_password = 0 WHERE id = ?")
               .bind(hash, salt, memberId)
               .run();
+            
+            // 如果用户更改了自己的密码，重定向到首页
+            if (session.user.id === memberId) {
+              return redirect("/app");
+            }
             return redirect(`/members/${memberId}`);
           }
 
@@ -1424,7 +1522,7 @@ function renderMemberCreateForm(args: { csrfToken: string }) {
       <a class="btn" href="/members">返回</a>
     </div>
     <div class="card">
-      <form class="form" method="post" action="/members">
+      <form class="form" method="post" action="/members" id="member-create-form">
         <input type="hidden" name="csrf" value="${escapeHtml(args.csrfToken)}" />
         <div class="grid grid--2">
           <div>
@@ -1445,12 +1543,90 @@ function renderMemberCreateForm(args: { csrfToken: string }) {
             </select>
           </div>
           <div>
-            <label>初始密碼（至少 8 碼）</label>
-            <input name="password" type="password" autocomplete="new-password" required />
+            <label>初始密碼（至少 8 碼，留空則自動生成）</label>
+            <div class="row">
+              <input name="password" type="password" autocomplete="new-password" id="password-input" style="flex: 1;" />
+              <button type="button" class="btn btn--small" onclick="generateRandomPassword()">生成隨機密碼</button>
+            </div>
+            <div class="muted" style="margin-top: 6px; font-size: 0.9em;">
+              留空密碼欄位將自動生成隨機密碼，成員首次登入時需更改密碼。
+            </div>
           </div>
         </div>
         <div class="form__actions">
           <button class="btn btn--primary" type="submit">建立</button>
+        </div>
+      </form>
+    </div>
+    <script>
+      function generateRandomPassword() {
+        const charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*";
+        let password = "";
+        const array = new Uint8Array(16);
+        crypto.getRandomValues(array);
+        for (let i = 0; i < 16; i++) {
+          password += charset[array[i] % charset.length];
+        }
+        document.getElementById("password-input").value = password;
+        document.getElementById("password-input").type = "text";
+        setTimeout(() => {
+          document.getElementById("password-input").type = "password";
+        }, 2000);
+      }
+    </script>
+  `;
+}
+
+function renderMemberCreatedSuccess(args: { email: string; displayName: string; generatedPassword: string }) {
+  return `
+    <div class="row">
+      <h1 style="margin: 0;">成員已建立</h1>
+      <div class="spacer"></div>
+      <a class="btn" href="/members">返回成員列表</a>
+    </div>
+    <div class="card">
+      <div class="flash flash--success" style="margin-bottom: 20px;">
+        成員已成功建立！已自動生成隨機密碼，成員首次登入時需更改密碼。
+      </div>
+      <div>
+        <h3>成員資訊</h3>
+        <div class="muted" style="margin-top: 10px;">
+          <div><strong>Email：</strong>${escapeHtml(args.email)}</div>
+          <div style="margin-top: 8px;"><strong>顯示名稱：</strong>${escapeHtml(args.displayName)}</div>
+          <div style="margin-top: 16px; padding: 12px; background: rgba(255,255,255,0.05); border-radius: 4px;">
+            <div><strong>生成的密碼：</strong></div>
+            <code style="display: block; margin-top: 8px; padding: 8px; background: rgba(0,0,0,0.3); border-radius: 4px; font-size: 1.1em; letter-spacing: 1px;">${escapeHtml(args.generatedPassword)}</code>
+            <div class="muted" style="margin-top: 8px; font-size: 0.9em;">
+              ⚠️ 請妥善保管此密碼並告知成員。此密碼僅顯示一次，無法再次查看。
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderChangePasswordRequiredForm(args: { csrfToken: string }) {
+  return `
+    <h1>必須更改密碼</h1>
+    <div class="card">
+      <div class="flash flash--warning" style="margin-bottom: 20px;">
+        這是您首次登入，為了安全起見，請立即更改您的密碼。
+      </div>
+      <form class="form" method="post" action="/change-password-required">
+        <input type="hidden" name="csrf" value="${escapeHtml(args.csrfToken)}" />
+        <div class="grid grid--2">
+          <div>
+            <label>新密碼（至少 8 碼）</label>
+            <input name="password" type="password" autocomplete="new-password" required />
+          </div>
+          <div>
+            <label>確認新密碼</label>
+            <input name="password_confirm" type="password" autocomplete="new-password" required />
+          </div>
+        </div>
+        <div class="form__actions">
+          <button class="btn btn--primary" type="submit">更改密碼</button>
         </div>
       </form>
     </div>

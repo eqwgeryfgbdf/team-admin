@@ -1,4 +1,4 @@
-import { escapeHtml, renderLayout, type LayoutUser } from "./renderHtml";
+import { escapeHtml, renderLayout, type LayoutUser, type TeamRole } from "./renderHtml";
 
 // 缓存日历图标 SVG，避免重复生成
 const CALENDAR_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>';
@@ -20,6 +20,14 @@ type AuthedSession = {
   csrfToken: string;
   user: LayoutUser;
 };
+
+function isManagerRole(role: TeamRole): boolean {
+  return role === "admin" || role === "owner";
+}
+
+function isOwnerRole(role: TeamRole): boolean {
+  return role === "owner";
+}
 
 class HttpError extends Error {
   status: number;
@@ -172,7 +180,7 @@ async function getSession(env: Env, request: Request): Promise<AuthedSession | n
         user_id: string;
         email: string;
         display_name: string;
-        role: "admin" | "member";
+      role: TeamRole;
         is_active: number;
         must_change_password: number;
       }
@@ -229,7 +237,17 @@ function requireAuth(session: AuthedSession | null): asserts session is AuthedSe
 }
 
 function requireAdmin(session: AuthedSession): void {
-  if (session.user.role !== "admin") throw new HttpError(403, "需要管理員權限");
+  if (!isManagerRole(session.user.role)) throw new HttpError(403, "需要管理員權限");
+}
+
+async function findEarliestActiveAdmin(env: Env, excludeUserId?: string): Promise<{ id: string; display_name: string; created_at: number } | null> {
+  const sql = excludeUserId
+    ? "SELECT id, display_name, created_at FROM users WHERE role = 'admin' AND is_active = 1 AND id != ? ORDER BY created_at ASC LIMIT 1"
+    : "SELECT id, display_name, created_at FROM users WHERE role = 'admin' AND is_active = 1 ORDER BY created_at ASC LIMIT 1";
+  const row = excludeUserId
+    ? ((await env.DB.prepare(sql).bind(excludeUserId).first()) as { id: string; display_name: string; created_at: number } | null)
+    : ((await env.DB.prepare(sql).first()) as { id: string; display_name: string; created_at: number } | null);
+  return row ?? null;
 }
 
 async function readForm(request: Request): Promise<FormData> {
@@ -274,6 +292,7 @@ function translateRole(role: string): string {
   const roleMap: Record<string, string> = {
     admin: "管理員",
     member: "成員",
+    owner: "團隊擁有者",
   };
   return roleMap[role.toLowerCase()] || role;
 }
@@ -410,7 +429,7 @@ export default {
         try {
           await env.DB.prepare(
             `INSERT INTO users (id, email, password_hash, password_salt, role, display_name, created_at)
-             VALUES (?, ?, ?, ?, 'admin', ?, ?)`
+             VALUES (?, ?, ?, ?, 'owner', ?, ?)`
           )
             .bind(userId, email, hash, salt, displayName, ts)
             .run();
@@ -469,7 +488,7 @@ export default {
               email: string;
               password_hash: string;
               password_salt: string;
-              role: "admin" | "member";
+              role: TeamRole;
               display_name: string;
               is_active: number;
               must_change_password: number;
@@ -656,7 +675,7 @@ export default {
         const res = (await env.DB.prepare(
           "SELECT id, email, role, display_name, is_active, created_at FROM users ORDER BY created_at DESC"
         ).all()) as {
-          results: Array<{ id: string; email: string; role: "admin" | "member"; display_name: string; is_active: number; created_at: number }>;
+          results: Array<{ id: string; email: string; role: TeamRole; display_name: string; is_active: number; created_at: number }>;
         };
         const membersList = renderMembersList({ users: res.results, csrfToken: session.csrfToken, currentUserId: session.user.id });
         return htmlResponse(
@@ -688,7 +707,7 @@ export default {
         assertCsrf(form, session);
         const email = normalizeEmail(getString(form, "email"));
         const displayName = getString(form, "display_name") || email;
-        const role = (getString(form, "role") === "admin" ? "admin" : "member") as "admin" | "member";
+        const role: TeamRole = getString(form, "role") === "admin" ? "admin" : "member";
         let password = getString(form, "password");
         
         // 如果密码为空或未提供，自动生成随机密码
@@ -737,7 +756,7 @@ export default {
         const match = new URLPattern({ pathname: "/members/:id" }).exec(url);
         if (match && request.method === "GET") {
           const memberId = match.pathname.groups.id;
-          if (session.user.role !== "admin" && session.user.id !== memberId) throw new HttpError(403, "沒有權限");
+          if (!isManagerRole(session.user.role) && session.user.id !== memberId) throw new HttpError(403, "沒有權限");
 
           const row = (await env.DB.prepare(
             "SELECT id, email, role, display_name, bio, discord_handle, is_active, created_at FROM users WHERE id = ? LIMIT 1"
@@ -747,7 +766,7 @@ export default {
             | {
                 id: string;
                 email: string;
-                role: "admin" | "member";
+                role: TeamRole;
                 display_name: string;
                 bio: string | null;
                 discord_handle: string | null;
@@ -756,6 +775,20 @@ export default {
               }
             | null;
           if (!row) throw new HttpError(404, "找不到成員");
+
+          let ownership: { candidates: Array<{ id: string; display_name: string; created_at: number }>; defaultTargetId: string | null } | undefined;
+          if (session.user.role === "owner") {
+            const candidatesRes = (await env.DB.prepare(
+              "SELECT id, display_name, created_at FROM users WHERE role = 'admin' AND is_active = 1 AND id != ? ORDER BY created_at ASC"
+            )
+              .bind(session.user.id)
+              .all()) as { results: Array<{ id: string; display_name: string; created_at: number }> };
+            const candidates = candidatesRes.results ?? [];
+            ownership = {
+              candidates,
+              defaultTargetId: candidates[0]?.id ?? null,
+            };
+          }
 
           return htmlResponse(
             renderLayout({
@@ -766,6 +799,7 @@ export default {
                 viewer: session.user,
                 member: row,
                 csrfToken: session.csrfToken,
+                ownership,
               }),
             })
           );
@@ -773,7 +807,7 @@ export default {
 
         if (match && request.method === "POST") {
           const memberId = match.pathname.groups.id;
-          if (session.user.role !== "admin" && session.user.id !== memberId) throw new HttpError(403, "沒有權限");
+          if (!isManagerRole(session.user.role) && session.user.id !== memberId) throw new HttpError(403, "沒有權限");
           const form = await readForm(request);
           assertCsrf(form, session);
           const action = getString(form, "action");
@@ -790,7 +824,7 @@ export default {
           }
 
           if (action === "password") {
-            if (session.user.role !== "admin" && session.user.id !== memberId) throw new HttpError(403, "沒有權限");
+            if (!isManagerRole(session.user.role) && session.user.id !== memberId) throw new HttpError(403, "沒有權限");
             const password = getString(form, "password");
             const password2 = getString(form, "password_confirm");
             if (password.length < 8) throw new HttpError(400, "密碼至少 8 碼");
@@ -808,10 +842,43 @@ export default {
             return redirect(`/members/${memberId}`);
           }
 
+          if (action === "transfer_owner") {
+            if (!isOwnerRole(session.user.role)) throw new HttpError(403, "只有團隊擁有者可以轉讓身份");
+            if (memberId !== session.user.id) throw new HttpError(400, "請從擁有者帳號提交轉讓");
+            let targetId = getString(form, "target_user_id");
+            if (!targetId) {
+              const fallback = await findEarliestActiveAdmin(env, session.user.id);
+              if (!fallback) throw new HttpError(400, "沒有可轉讓的管理員，請先新增管理員");
+              targetId = fallback.id;
+            }
+            if (targetId === session.user.id) throw new HttpError(400, "轉讓對象不可為自己");
+
+            const target = (await env.DB.prepare("SELECT id, role, is_active FROM users WHERE id = ? LIMIT 1")
+              .bind(targetId)
+              .first()) as { id: string; role: TeamRole; is_active: number } | null;
+            if (!target || !target.is_active) throw new HttpError(400, "轉移對象不存在或已停用");
+            if (target.role !== "admin") throw new HttpError(400, "轉移對象必須是管理員");
+
+            await env.DB.batch([
+              env.DB.prepare("UPDATE users SET role = 'admin' WHERE role = 'owner' AND id != ?").bind(session.user.id),
+              env.DB.prepare("UPDATE users SET role = 'admin' WHERE id = ?").bind(session.user.id),
+              env.DB.prepare("UPDATE users SET role = 'owner' WHERE id = ?").bind(targetId),
+            ]);
+
+            return redirect(`/members/${targetId}`);
+          }
+
           if (action === "admin_update") {
             requireAdmin(session);
-            const role = (getString(form, "role") === "admin" ? "admin" : "member") as "admin" | "member";
+            const role: TeamRole = getString(form, "role") === "admin" ? "admin" : "member";
             const isActive = getString(form, "is_active") === "1" ? 1 : 0;
+            const currentRoleRow = (await env.DB.prepare("SELECT role FROM users WHERE id = ? LIMIT 1")
+              .bind(memberId)
+              .first()) as { role: TeamRole } | null;
+            if (!currentRoleRow) throw new HttpError(404, "找不到成員");
+            if (currentRoleRow.role === "owner") {
+              throw new HttpError(400, "團隊擁有者無法直接修改，請使用轉讓流程");
+            }
             await env.DB.prepare("UPDATE users SET role = ?, is_active = ? WHERE id = ?")
               .bind(role, isActive, memberId)
               .run();
@@ -820,23 +887,27 @@ export default {
 
           if (action === "delete") {
             const isSelf = session.user.id === memberId;
-            const isAdmin = session.user.role === "admin";
+            const canManage = isManagerRole(session.user.role);
 
             // 权限检查：管理员不能删除自己，成员只能删除自己
-            if (isAdmin && isSelf) {
+            if (canManage && isSelf) {
               throw new HttpError(400, "管理員不能移除自己");
             }
-            if (!isAdmin && !isSelf) {
+            if (!canManage && !isSelf) {
               throw new HttpError(403, "沒有權限刪除此成員");
             }
 
             // 获取要删除的成员信息
             const memberRow = (await env.DB.prepare("SELECT role FROM users WHERE id = ? LIMIT 1")
               .bind(memberId)
-              .first()) as { role: "admin" | "member" } | null;
+              .first()) as { role: TeamRole } | null;
             if (!memberRow) throw new HttpError(404, "找不到成員");
 
             // 如果要删除的是管理员，检查是否是最后一个管理员
+            if (memberRow.role === "owner") {
+              throw new HttpError(400, "團隊擁有者無法直接移除，請先完成轉讓");
+            }
+
             if (memberRow.role === "admin") {
               const adminCount = (await env.DB.prepare("SELECT COUNT(*) as c FROM users WHERE role = 'admin' AND is_active = 1")
                 .first()) as { c?: number } | null;
@@ -1039,7 +1110,7 @@ export default {
               id: string;
               display_name: string;
               email: string;
-              role: "admin" | "member";
+              role: TeamRole;
               participant_role: string;
             }>;
           };
@@ -1117,7 +1188,7 @@ export default {
             }>;
           };
 
-          const usersRes = session.user.role === "admin"
+          const usersRes = isManagerRole(session.user.role)
             ? ((await env.DB.prepare("SELECT id, display_name, email FROM users WHERE is_active = 1 ORDER BY display_name ASC").all()) as {
                 results: Array<{ id: string; display_name: string; email: string }>;
               })
@@ -1527,7 +1598,7 @@ function renderDashboard(args: {
         <div class="row">
           <a class="btn btn--primary" href="/events/new">建立活動</a>
           <a class="btn" href="/events">查看活動</a>
-          ${user.role === "admin" ? `<a class="btn" href="/members">管理成員</a>` : ""}
+          ${isManagerRole(user.role) ? `<a class="btn" href="/members">管理成員</a>` : ""}
         </div>
       </div>
       <div class="card">
@@ -1545,16 +1616,16 @@ function renderDashboard(args: {
 }
 
 function renderMembersList(args: {
-  users: Array<{ id: string; email: string; role: "admin" | "member"; display_name: string; is_active: number; created_at: number }>;
+  users: Array<{ id: string; email: string; role: TeamRole; display_name: string; is_active: number; created_at: number }>;
   csrfToken: string;
   currentUserId: string;
 }): { body: string; outsideContainer: string } {
   const rows = args.users
     .map((u) => {
       const status = u.is_active ? `<span class="pill pill--green">${escapeHtml(translateUserStatus(u.is_active))}</span>` : `<span class="pill pill--red">${escapeHtml(translateUserStatus(u.is_active))}</span>`;
-      // 管理员不能删除自己
       const isCurrentUser = u.id === args.currentUserId;
-      const deleteBtn = isCurrentUser && u.role === "admin"
+      const isProtected = u.role === "owner" || (isCurrentUser && isManagerRole(u.role));
+      const deleteBtn = isProtected
         ? `<span class="muted">—</span>`
         : `
           <form method="post" action="/members/${escapeHtml(u.id)}" style="margin:0; display:inline;" onsubmit="return confirm('確定要移除此成員嗎？此操作無法復原。');">
@@ -1720,7 +1791,7 @@ function renderMemberDetail(args: {
   member: {
     id: string;
     email: string;
-    role: "admin" | "member";
+    role: TeamRole;
     display_name: string;
     bio: string | null;
     discord_handle: string | null;
@@ -1728,9 +1799,13 @@ function renderMemberDetail(args: {
     created_at: number;
   };
   csrfToken: string;
+  ownership?: { candidates: Array<{ id: string; display_name: string; created_at: number }>; defaultTargetId: string | null };
 }) {
   const { viewer, member, csrfToken } = args;
-  const canAdmin = viewer.role === "admin";
+  const ownership = args.ownership ?? { candidates: [], defaultTargetId: null };
+  const canAdmin = isManagerRole(viewer.role);
+  const viewerIsOwner = isOwnerRole(viewer.role);
+  const memberIsOwner = isOwnerRole(member.role);
   const isSelf = viewer.id === member.id;
   return `
     <div class="row">
@@ -1796,31 +1871,84 @@ function renderMemberDetail(args: {
     ${
       canAdmin
         ? `
-          <h2>管理員設定</h2>
+          ${
+            memberIsOwner
+              ? `
+                <h2>權限提醒</h2>
+                <div class="card">
+                  <div class="muted">
+                    團隊擁有者的角色與狀態需透過「轉讓」流程調整，無法直接修改。
+                  </div>
+                </div>
+              `
+              : `
+                <h2>管理員設定</h2>
+                <div class="card">
+                  <form class="form" method="post" action="/members/${escapeHtml(member.id)}">
+                    <input type="hidden" name="csrf" value="${escapeHtml(csrfToken)}" />
+                    <input type="hidden" name="action" value="admin_update" />
+                    <div class="grid grid--2">
+                      <div>
+                        <label>角色</label>
+                        <select name="role">
+                          <option value="member" ${member.role === "member" ? "selected" : ""}>${escapeHtml(translateRole("member"))}</option>
+                          <option value="admin" ${member.role === "admin" ? "selected" : ""}>${escapeHtml(translateRole("admin"))}</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label>狀態</label>
+                        <select name="is_active">
+                          <option value="1" ${member.is_active ? "selected" : ""}>${escapeHtml(translateUserStatus(1))}</option>
+                          <option value="0" ${!member.is_active ? "selected" : ""}>${escapeHtml(translateUserStatus(0))}</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div class="form__actions">
+                      <button class="btn btn--primary" type="submit">更新</button>
+                    </div>
+                  </form>
+                </div>
+              `
+          }
+        `
+        : ""
+    }
+
+    ${
+      viewerIsOwner
+        ? `
+          <h2>團隊擁有者轉讓</h2>
           <div class="card">
-            <form class="form" method="post" action="/members/${escapeHtml(member.id)}">
-              <input type="hidden" name="csrf" value="${escapeHtml(csrfToken)}" />
-              <input type="hidden" name="action" value="admin_update" />
-              <div class="grid grid--2">
-                <div>
-                  <label>角色</label>
-                  <select name="role">
-                    <option value="member" ${member.role === "member" ? "selected" : ""}>${escapeHtml(translateRole("member"))}</option>
-                    <option value="admin" ${member.role === "admin" ? "selected" : ""}>${escapeHtml(translateRole("admin"))}</option>
-                  </select>
-                </div>
-                <div>
-                  <label>狀態</label>
-                  <select name="is_active">
-                    <option value="1" ${member.is_active ? "selected" : ""}>${escapeHtml(translateUserStatus(1))}</option>
-                    <option value="0" ${!member.is_active ? "selected" : ""}>${escapeHtml(translateUserStatus(0))}</option>
-                  </select>
-                </div>
-              </div>
-              <div class="form__actions">
-                <button class="btn btn--primary" type="submit">更新</button>
-              </div>
-            </form>
+            <div class="muted" style="margin-bottom: 10px;">
+              團隊僅允許一位擁有者。轉讓後，您將自動降為管理員。若未選擇對象，系統會預設轉給最早加入的管理員。
+            </div>
+            ${
+              ownership.candidates.length === 0
+                ? `<div class="flash flash--warning">目前沒有可轉讓的管理員，請先建立或提升管理員。</div>`
+                : `
+                  <form class="form" method="post" action="/members/${escapeHtml(viewer.id)}">
+                    <input type="hidden" name="csrf" value="${escapeHtml(csrfToken)}" />
+                    <input type="hidden" name="action" value="transfer_owner" />
+                    <div>
+                      <label>選擇轉移對象（預設為最早加入的管理員）</label>
+                      <select name="target_user_id">
+                        <option value="" ${ownership.defaultTargetId ? "" : "selected"}>預設：最早加入的管理員</option>
+                        ${ownership.candidates
+                          .map(
+                            (c) =>
+                              `<option value="${escapeHtml(c.id)}" ${ownership.defaultTargetId === c.id ? "selected" : ""}>
+                                ${escapeHtml(c.display_name)}（加入時間：${escapeHtml(new Date(c.created_at).toLocaleString("zh-TW", { hour12: false }))}）
+                              </option>`
+                          )
+                          .join("")}
+                      </select>
+                    </div>
+                    <div class="form__actions">
+                      <button class="btn btn--primary" type="submit" onclick="return confirm('確定將團隊擁有者轉讓給選擇的成員？轉讓後您將成為管理員。');">轉讓擁有者</button>
+                    </div>
+                  </form>
+                `
+            }
           </div>
         `
         : ""
@@ -1937,7 +2065,7 @@ function renderEventDetail(args: {
     created_at: number;
     updated_at: number;
   };
-  participants: Array<{ id: string; display_name: string; email: string; role: "admin" | "member"; participant_role: string }>;
+  participants: Array<{ id: string; display_name: string; email: string; role: TeamRole; participant_role: string }>;
   tasks: Array<{ id: string; title: string; description: string | null; status: string; due_date: string | null; assignee_user_id: string | null; assignee_name: string | null }>;
   goals: Array<{ id: string; title: string; description: string | null; status: string; due_date: string | null }>;
   progress: Array<{ id: string; entity_type: string; entity_id: string; progress_percent: number | null; note: string; created_at: number; author_name: string }>;
@@ -1956,7 +2084,7 @@ function renderEventDetail(args: {
             ${participants
               .map((p) => {
                 const removeBtn =
-                  viewer.role === "admin"
+                  isManagerRole(viewer.role)
                     ? `
                       <form method="post" action="/events/${escapeHtml(event.id)}/participants/remove" style="margin:0;">
                         <input type="hidden" name="csrf" value="${escapeHtml(csrfToken)}" />
@@ -1978,7 +2106,7 @@ function renderEventDetail(args: {
         </table>`;
 
   const addParticipantForm =
-    viewer.role === "admin"
+    isManagerRole(viewer.role)
       ? `
         <form class="form" method="post" action="/events/${escapeHtml(event.id)}/participants/add">
           <input type="hidden" name="csrf" value="${escapeHtml(csrfToken)}" />
@@ -2015,7 +2143,7 @@ function renderEventDetail(args: {
                       ${t.description ? `<div class="muted" style="margin-top:6px;">${escapeHtml(t.description)}</div>` : ""}
                       <details style="margin-top:8px;">
                         <summary class="muted">編輯</summary>
-                        ${renderTaskEditForm({ task: t, eventId: event.id, csrfToken, allUsers, isAdmin: viewer.role === "admin" })}
+                        ${renderTaskEditForm({ task: t, eventId: event.id, csrfToken, allUsers, isAdmin: isManagerRole(viewer.role) })}
                       </details>
                     </td>
                     <td><span class="${pillForStatus(t.status)}">${escapeHtml(translateTaskStatus(t.status))}</span></td>
@@ -2163,7 +2291,7 @@ function renderEventDetail(args: {
     <div class="grid grid--2" style="margin-top: 16px;">
       <div class="card">
         <div class="card__title">新增任務</div>
-        ${renderTaskCreateForm({ eventId: event.id, csrfToken, allUsers, isAdmin: viewer.role === "admin" })}
+        ${renderTaskCreateForm({ eventId: event.id, csrfToken, allUsers, isAdmin: isManagerRole(viewer.role) })}
         <div style="margin-top: 14px;">${tasksHtml}</div>
       </div>
       <div class="card">

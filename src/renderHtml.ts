@@ -1,8 +1,10 @@
+export type TeamRole = "admin" | "member" | "owner";
+
 export type LayoutUser = {
   id: string;
   email: string;
   displayName: string;
-  role: "admin" | "member";
+  role: TeamRole;
 };
 
 export type LayoutOptions = {
@@ -34,7 +36,7 @@ function renderNav(user: LayoutUser, csrfToken: string) {
           <a class="nav__link" href="/app">儀表板</a>
           <a class="nav__link" href="/events">活動</a>
           <a class="nav__link" href="/calendar">日曆</a>
-          ${user.role === "admin" ? `<a class="nav__link" href="/members">成員</a>` : ""}
+          ${user.role === "admin" || user.role === "owner" ? `<a class="nav__link" href="/members">成員</a>` : ""}
           <a class="nav__link" href="/profile">個人資料</a>
         </div>
       </div>

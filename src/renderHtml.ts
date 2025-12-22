@@ -356,17 +356,45 @@ export function renderLayout(opts: LayoutOptions): string {
         
         textarea { min-height: 120px; resize: vertical; line-height: 1.6; }
         
-        .date-input-wrapper { position: relative; display: flex; align-items: center; }
-        .date-input-wrapper input[type="date"] { padding-right: 44px; cursor: pointer; }
+        .date-input-wrapper { 
+          position: relative; 
+          display: flex; 
+          align-items: center; 
+          cursor: pointer;
+        }
+        .date-input-wrapper input[type="date"] { 
+          padding-right: 44px; 
+          cursor: pointer; 
+          caret-color: transparent; /* 隱藏游標 */
+        }
         .date-input-wrapper input[type="date"]::-webkit-calendar-picker-indicator {
-          position: absolute; right: 12px; cursor: pointer; opacity: 0; width: 24px; height: 24px; z-index: 2;
+          position: absolute; 
+          right: 12px; 
+          cursor: pointer; 
+          opacity: 0; 
+          width: 100%; 
+          height: 100%; 
+          z-index: 1;
         }
         .date-icon-btn {
-          position: absolute; right: 12px; background: transparent; border: none; 
-          color: var(--text-muted); padding: 4px; pointer-events: none;
+          position: absolute; 
+          right: 12px; 
+          background: transparent; 
+          border: none; 
+          color: var(--text-muted); 
+          padding: 4px; 
+          pointer-events: none; /* 讓點擊事件穿透到 input */
           transition: color 0.2s;
+          z-index: 2;
         }
-        .date-input-wrapper:hover .date-icon-btn { color: var(--accent); }
+        .date-input-wrapper:hover .date-icon-btn,
+        .date-input-wrapper:focus-within .date-icon-btn { 
+          color: var(--accent); 
+        }
+        .date-input-wrapper:focus-within input {
+          border-color: var(--accent);
+          box-shadow: 0 0 0 4px var(--accent-light);
+        }
         
         .form { display: grid; gap: 20px; }
         .form__actions { display: flex; gap: 12px; justify-content: flex-end; align-items: center; margin-top: 8px; }
@@ -443,21 +471,87 @@ export function renderLayout(opts: LayoutOptions): string {
       </style>
       <script>
         document.addEventListener('DOMContentLoaded', () => {
-          // 日期輸入優化 (保留原有邏輯)
+          // 日期輸入優化 - 點擊即開啟日期選擇器
           (function() {
             const dateFormatOptions = { year: 'numeric', month: '2-digit', day: '2-digit' };
+            
             function formatDate(value) {
               if (!value) return '';
-              try { return new Date(value + 'T00:00:00').toLocaleDateString('zh-TW', dateFormatOptions); } 
-              catch (e) { return ''; }
+              try { 
+                return new Date(value + 'T00:00:00').toLocaleDateString('zh-TW', dateFormatOptions); 
+              } catch (e) { 
+                return ''; 
+              }
             }
-            function updateInputTitle(input) { input.title = formatDate(input.value); }
             
+            function updateInputTitle(input) { 
+              input.title = formatDate(input.value); 
+            }
+            
+            function openDatePicker(input) {
+              if (!input) return;
+              // 優先使用 showPicker API (現代瀏覽器)
+              if (typeof input.showPicker === 'function') {
+                try {
+                  input.showPicker();
+                } catch (e) {
+                  // 如果 showPicker 失敗，使用 focus 作為備選
+                  input.focus();
+                }
+              } else {
+                // 舊版瀏覽器使用 focus
+                input.focus();
+              }
+            }
+            
+            // 初始化所有日期輸入框的 title
             const dateInputs = document.querySelectorAll('input[type="date"]');
-            dateInputs.forEach(input => updateInputTitle(input));
+            dateInputs.forEach(input => {
+              updateInputTitle(input);
+              
+              // 點擊輸入框時開啟日期選擇器
+              input.addEventListener('click', function(e) {
+                e.preventDefault();
+                openDatePicker(this);
+              });
+              
+              // Focus 時也開啟日期選擇器（Tab 鍵導航）
+              input.addEventListener('focus', function() {
+                // 使用 setTimeout 避免與 click 事件衝突
+                setTimeout(() => {
+                  if (document.activeElement === this) {
+                    openDatePicker(this);
+                  }
+                }, 100);
+              });
+              
+              // 防止鍵盤輸入（只允許通過日期選擇器選擇）
+              input.addEventListener('keydown', function(e) {
+                // 允許 Tab、Enter、Escape 等導航鍵
+                if (e.key === 'Tab' || e.key === 'Enter' || e.key === 'Escape') {
+                  return;
+                }
+                // 阻止其他鍵盤輸入
+                e.preventDefault();
+                // 如果按下的是數字或方向鍵，開啟日期選擇器
+                if (/[0-9]/.test(e.key) || /Arrow/.test(e.key)) {
+                  openDatePicker(this);
+                }
+              });
+            });
             
-            document.addEventListener('change', e => {
-              if (e.target && e.target.type === 'date') updateInputTitle(e.target);
+            // 處理日期變更事件
+            document.addEventListener('change', function(e) {
+              if (e.target && e.target.type === 'date') {
+                updateInputTitle(e.target);
+              }
+            });
+            
+            // 處理日期輸入事件（即時更新）
+            document.addEventListener('input', function(e) {
+              if (e.target && e.target.type === 'date') {
+                updateInputTitle(e.target);
+              }
             });
           })();
 

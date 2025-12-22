@@ -7,8 +7,8 @@ function renderDateInput(name: string, value?: string | null, required = false):
   const escapedName = escapeHtml(name);
   const valueAttr = value ? ` value="${escapeHtml(value)}"` : "";
   const requiredAttr = required ? " required" : "";
-  // 使用更简洁的字符串拼接
-  return `<div class="date-input-wrapper"><input name="${escapedName}" type="date"${valueAttr}${requiredAttr} /><button type="button" class="date-icon-btn" aria-label="选择日期" onclick="(function(e){e.stopPropagation();const i=this.previousElementSibling;if(i&&typeof i.showPicker==='function'){i.showPicker();}else if(i){i.focus();}}).call(this,event)">${CALENDAR_ICON_SVG}</button></div>`;
+  // 日期輸入框：點擊輸入框本身就會開啟日期選擇器（由 renderHtml.ts 中的 JavaScript 處理）
+  return `<div class="date-input-wrapper"><input name="${escapedName}" type="date"${valueAttr}${requiredAttr} /><button type="button" class="date-icon-btn" aria-label="選擇日期" tabindex="-1">${CALENDAR_ICON_SVG}</button></div>`;
 }
 
 const SESSION_COOKIE_NAME = "__Host-teamadmin_session";

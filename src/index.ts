@@ -871,12 +871,76 @@ export default {
 
       // Calendar
       if (pathname === "/calendar" && request.method === "GET") {
+        const url = new URL(request.url);
+        const yearParam = url.searchParams.get("year");
+        const monthParam = url.searchParams.get("month");
+        
+        const now = new Date();
+        const year = yearParam ? parseInt(yearParam) : now.getFullYear();
+        const month = monthParam ? parseInt(monthParam) - 1 : now.getMonth(); // 0-indexed in JS
+        
+        // Construct date for view
+        const currentDate = new Date(year, month, 1);
+        
+        const events = (await env.DB.prepare(
+          "SELECT id, title, start_date, end_date, status FROM events WHERE status != 'cancelled' AND (start_date IS NOT NULL OR end_date IS NOT NULL)"
+        ).all()) as { results: Array<{ id: string; title: string; start_date: string; end_date: string | null; status: string }> };
+
+        const tasks = (await env.DB.prepare(
+          "SELECT id, title, due_date, status, event_id FROM tasks WHERE due_date IS NOT NULL AND status != 'done' AND status != 'cancelled'"
+        ).all()) as { results: Array<{ id: string; title: string; due_date: string; status: string; event_id: string }> };
+
+        const goals = (await env.DB.prepare(
+          "SELECT id, title, due_date, status, event_id FROM goals WHERE due_date IS NOT NULL AND status != 'achieved' AND status != 'dropped'"
+        ).all()) as { results: Array<{ id: string; title: string; due_date: string; status: string; event_id: string }> };
+
+        const items: Array<{ id: string; type: "event" | "task" | "goal"; title: string; date: string; status: string; url: string }> = [];
+
+        // Map events
+        for (const e of events.results) {
+            const d = e.start_date || e.end_date;
+            if (d) {
+                items.push({
+                    id: e.id,
+                    type: "event",
+                    title: e.title,
+                    date: d,
+                    status: e.status,
+                    url: `/events/${e.id}`
+                });
+            }
+        }
+
+        // Map tasks
+        for (const t of tasks.results) {
+            items.push({
+                id: t.id,
+                type: "task",
+                title: t.title,
+                date: t.due_date,
+                status: t.status,
+                url: `/events/${t.event_id}`
+            });
+        }
+
+        // Map goals
+        for (const g of goals.results) {
+            items.push({
+                id: g.id,
+                type: "goal",
+                title: g.title,
+                date: g.due_date,
+                status: g.status,
+                url: `/events/${g.event_id}`
+            });
+        }
+
         return htmlResponse(
           renderLayout({
             title: "日曆",
             user: session.user,
             csrfToken: session.csrfToken,
-            body: renderCalendar(),
+            body: renderCalendar({ currentDate, items }),
           })
         );
       }
@@ -2556,23 +2620,20 @@ function renderKanbanBoard(args: {
   `;
 }
 
-function renderCalendar() {
+function renderCalendar(args: {
+  currentDate: Date;
+  items: Array<{
+    id: string;
+    type: "event" | "task" | "goal";
+    title: string;
+    date: string;
+    status: string;
+    url: string;
+  }>;
+}) {
   return `
-    <h1>日曆</h1>
-    <div class="card" style="padding: 0; overflow: hidden;">
-      <div style="padding: 24px; border-bottom: 1px solid var(--border);">
-        <div class="card__title">Google 日曆</div>
-        <div class="muted" style="margin-top: 8px;">查看團隊活動和重要日期</div>
-      </div>
-      <div class="calendar-container">
-        <iframe 
-          src="https://calendar.google.com/calendar/embed?src=5b9f7c8199de4cf433be7d08113240b84c80f369afb957473a7d56315f1d6916%40group.calendar.google.com&ctz=Asia%2FTaipei" 
-          class="calendar-iframe"
-          frameborder="0" 
-          scrolling="no"
-          title="Google 日曆">
-        </iframe>
-      </div>
+    <div class="calendar-container">
+      <iframe src="https://calendar.google.com/calendar/embed?src=5b9f7c8199de4cf433be7d08113240b84c80f369afb957473a7d56315f1d6916%40group.calendar.google.com&ctz=Asia%2FTaipei" style="border: 0" width="100%" height="600" frameborder="0" scrolling="no" class="calendar-iframe"></iframe>
     </div>
   `;
 }

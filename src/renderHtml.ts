@@ -712,6 +712,89 @@ export function renderLayout(opts: LayoutOptions): string {
             max-height: 300px;
           }
         }
+
+        /* Calendar Styles */
+        .calendar-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 20px;
+        }
+        .calendar-grid {
+          display: grid;
+          grid-template-columns: repeat(7, 1fr);
+          gap: 1px;
+          background: var(--border);
+          border: 1px solid var(--border);
+          border-radius: var(--radius-lg);
+          overflow: hidden;
+        }
+        .calendar-cell {
+          background: var(--card-bg);
+          min-height: 120px;
+          padding: 8px;
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+        .calendar-cell--header {
+          background: var(--bg-secondary);
+          min-height: auto;
+          text-align: center;
+          font-weight: 600;
+          color: var(--text-secondary);
+          padding: 12px;
+        }
+        .calendar-cell--empty {
+          background: var(--bg-secondary);
+          opacity: 0.5;
+        }
+        .calendar-date {
+          font-weight: 600;
+          margin-bottom: 4px;
+          width: 28px;
+          height: 28px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: 50%;
+          font-size: 0.9rem;
+        }
+        .calendar-date--today {
+          background: var(--accent);
+          color: white;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        .calendar-item {
+          font-size: 0.75rem;
+          padding: 4px 6px;
+          border-radius: 4px;
+          margin-bottom: 2px;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          display: block;
+          text-decoration: none;
+          font-weight: 500;
+          transition: transform 0.1s;
+        }
+        .calendar-item:hover {
+          opacity: 1;
+          transform: scale(1.02);
+          z-index: 1;
+        }
+        .calendar-item--event { background: #e0f2fe; color: #0369a1; border-left: 3px solid #0284c7; }
+        .calendar-item--task { background: #dcfce7; color: #15803d; border-left: 3px solid #16a34a; }
+        .calendar-item--goal { background: #ffedd5; color: #c2410c; border-left: 3px solid #ea580c; }
+        
+        html[data-theme="dark"] .calendar-item--event { background: rgba(2, 132, 199, 0.2); color: #7dd3fc; border-left-color: #38bdf8; }
+        html[data-theme="dark"] .calendar-item--task { background: rgba(22, 163, 74, 0.2); color: #86efac; border-left-color: #4ade80; }
+        html[data-theme="dark"] .calendar-item--goal { background: rgba(234, 88, 12, 0.2); color: #fdba74; border-left-color: #fb923c; }
+
+        @media (max-width: 768px) {
+          .calendar-cell { min-height: 80px; }
+          .calendar-item { font-size: 0.7rem; padding: 2px 4px; }
+        }
       </style>
       <script>
         document.addEventListener('DOMContentLoaded', () => {

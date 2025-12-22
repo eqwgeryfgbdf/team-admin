@@ -147,6 +147,7 @@ export function renderLayout(opts: LayoutOptions): string {
           transition: background-color 0.5s ease, color 0.5s ease;
           min-height: 100vh;
           overflow-x: hidden;
+          box-shadow: 0px 4px 12px 0px rgba(0, 0, 0, 0.15);
           
           /* 背景動畫效果 */
           background-image: 

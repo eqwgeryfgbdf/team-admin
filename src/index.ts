@@ -1214,6 +1214,7 @@ function renderDashboard(args: {
 
   return `
     <h1>嗨，${escapeHtml(user.displayName)}</h1>
+    <div class="card">${eventsHtml}</div>
     <div class="grid grid--2">
       <div class="card">
         <div class="card__title">快速開始</div>
@@ -1232,7 +1233,6 @@ function renderDashboard(args: {
       </div>
     </div>
     <h2>最近活動</h2>
-    <div class="card">${eventsHtml}</div>
   `;
 }
 
@@ -1487,7 +1487,7 @@ function renderEventsList(args: {
       <div class="spacer"></div>
       <a class="btn btn--primary" href="/events/new">建立活動</a>
     </div>
-    <div class="card">
+    <div class="card" style="margin-top: 30px;">
       <table>
         <thead><tr><th>活動</th><th>狀態</th><th>日期</th><th>更新</th></tr></thead>
         <tbody>${rows || ""}</tbody>

@@ -1,5 +1,20 @@
 import { escapeHtml, renderLayout, type LayoutUser } from "./renderHtml";
 
+function renderDateInput(name: string, value?: string | null, required = false): string {
+  const valueAttr = value ? ` value="${escapeHtml(value)}"` : "";
+  const requiredAttr = required ? " required" : "";
+  return `
+    <div class="date-input-wrapper">
+      <input name="${escapeHtml(name)}" type="date"${valueAttr}${requiredAttr} />
+      <button type="button" class="date-icon-btn" aria-label="选择日期" onclick="this.previousElementSibling.showPicker ? this.previousElementSibling.showPicker() : this.previousElementSibling.focus()">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+        </svg>
+      </button>
+    </div>
+  `;
+}
+
 const SESSION_COOKIE_NAME = "__Host-teamadmin_session";
 const SESSION_TTL_DAYS = 30;
 const PBKDF2_ITERATIONS = 100_000; // Cloudflare Workers Web Crypto API limit is 100,000
@@ -1507,11 +1522,11 @@ function renderEventCreateForm(args: { csrfToken: string }) {
         <div class="grid grid--2">
           <div>
             <label>開始日期（可選）</label>
-            <input name="start_date" type="date" />
+            ${renderDateInput("start_date")}
           </div>
           <div>
             <label>結束日期（可選）</label>
-            <input name="end_date" type="date" />
+            ${renderDateInput("end_date")}
           </div>
         </div>
         <div class="form__actions">
@@ -1739,11 +1754,11 @@ function renderEventDetail(args: {
           <div class="grid grid--2">
             <div>
               <label>開始日期（可選）</label>
-              <input name="start_date" type="date" value="${escapeHtml(event.start_date ?? "")}" />
+              ${renderDateInput("start_date", event.start_date)}
             </div>
             <div>
               <label>結束日期（可選）</label>
-              <input name="end_date" type="date" value="${escapeHtml(event.end_date ?? "")}" />
+              ${renderDateInput("end_date", event.end_date)}
             </div>
           </div>
           <div class="form__actions">
@@ -1817,7 +1832,7 @@ function renderTaskCreateForm(args: { eventId: string; csrfToken: string; allUse
         ${options}
         <div>
           <label>期限（可選）</label>
-          <input name="due_date" type="date" />
+          ${renderDateInput("due_date")}
         </div>
       </div>
       <div class="form__actions">
@@ -1876,7 +1891,7 @@ function renderTaskEditForm(args: {
         ${assigneeSelect}
         <div>
           <label>期限（可選）</label>
-          <input name="due_date" type="date" value="${escapeHtml(task.due_date ?? "")}" />
+          ${renderDateInput("due_date", task.due_date)}
         </div>
       </div>
       <div class="form__actions">
@@ -1901,7 +1916,7 @@ function renderGoalCreateForm(args: { eventId: string; csrfToken: string }) {
       </div>
       <div>
         <label>期限（可選）</label>
-        <input name="due_date" type="date" />
+        ${renderDateInput("due_date")}
       </div>
       <div class="form__actions">
         <button class="btn btn--primary" type="submit">新增</button>
@@ -1940,7 +1955,7 @@ function renderGoalEditForm(args: {
       </div>
       <div>
         <label>期限（可選）</label>
-        <input name="due_date" type="date" value="${escapeHtml(goal.due_date ?? "")}" />
+        ${renderDateInput("due_date", goal.due_date)}
       </div>
       <div class="form__actions">
         <button class="btn btn--primary btn--small" type="submit">更新</button>

@@ -146,6 +146,38 @@ export function renderLayout(opts: LayoutOptions): string {
         }
         input:focus, textarea:focus, select:focus { border-color: rgba(124,58,237,0.7); box-shadow: 0 0 0 3px rgba(124,58,237,0.18); }
         textarea { min-height: 90px; resize: vertical; }
+        .date-input-wrapper { position: relative; display: flex; align-items: center; }
+        .date-input-wrapper input[type="date"] { 
+          padding-right: 40px; 
+          cursor: pointer;
+        }
+        .date-input-wrapper input[type="date"]::-webkit-calendar-picker-indicator {
+          position: absolute;
+          right: 8px;
+          cursor: pointer;
+          opacity: 0.7;
+          filter: invert(1);
+          width: 20px;
+          height: 20px;
+        }
+        .date-input-wrapper input[type="date"]::-webkit-calendar-picker-indicator:hover {
+          opacity: 1;
+        }
+        .date-icon-btn {
+          position: absolute;
+          right: 8px;
+          background: transparent;
+          border: none;
+          color: var(--muted);
+          cursor: pointer;
+          padding: 4px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 1;
+        }
+        .date-icon-btn:hover { color: var(--text); }
+        .date-icon-btn svg { width: 18px; height: 18px; }
         .form { display: grid; gap: 12px; }
         .form__actions { display: flex; gap: 10px; justify-content: flex-end; align-items: center; flex-wrap: wrap; }
         table { width: 100%; border-collapse: collapse; overflow: hidden; border-radius: 12px; border: 1px solid var(--line); }
@@ -159,6 +191,39 @@ export function renderLayout(opts: LayoutOptions): string {
         .pill--yellow { color: rgba(245,158,11,0.95); border-color: rgba(245,158,11,0.35); background: rgba(245,158,11,0.10); }
         .pill--red { color: rgba(248,113,113,0.95); border-color: rgba(239,68,68,0.35); background: rgba(239,68,68,0.10); }
       </style>
+      <script>
+        // 改善日期输入的用户体验
+        document.addEventListener('DOMContentLoaded', function() {
+          // 改善日期输入的显示格式（显示为中文格式）
+          const dateInputs = document.querySelectorAll('input[type="date"]');
+          dateInputs.forEach(function(input) {
+            // 更新 title 以显示格式化日期
+            function updateTitle() {
+              if (input.value) {
+                try {
+                  const date = new Date(input.value + 'T00:00:00');
+                  const formatted = date.toLocaleDateString('zh-TW', { 
+                    year: 'numeric', 
+                    month: '2-digit', 
+                    day: '2-digit' 
+                  });
+                  input.title = formatted;
+                } catch (e) {
+                  // 忽略日期解析错误
+                }
+              } else {
+                input.title = '';
+              }
+            }
+            
+            input.addEventListener('change', updateTitle);
+            input.addEventListener('input', updateTitle);
+            
+            // 初始化时也格式化
+            updateTitle();
+          });
+        });
+      </script>
     </head>
     <body>
       ${navHtml}

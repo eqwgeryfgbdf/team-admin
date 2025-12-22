@@ -194,7 +194,7 @@ export function renderLayout(opts: LayoutOptions): string {
       <script>
         // 改善日期输入的用户体验
         document.addEventListener('DOMContentLoaded', function() {
-          // 改善日期输入的显示格式（显示为中文格式）
+          // 改善日期输入的显示格式（显示为中文格式）并添加点击打开日历功能
           const dateInputs = document.querySelectorAll('input[type="date"]');
           dateInputs.forEach(function(input) {
             // 更新 title 以显示格式化日期
@@ -215,6 +215,26 @@ export function renderLayout(opts: LayoutOptions): string {
                 input.title = '';
               }
             }
+            
+            // 点击输入框时自动打开日历选择器
+            input.addEventListener('click', function(e) {
+              // 如果浏览器支持 showPicker() 方法，使用它
+              if (typeof this.showPicker === 'function') {
+                e.preventDefault();
+                this.showPicker();
+              }
+              // 否则让默认行为处理（focus 会触发某些浏览器的日期选择器）
+            });
+            
+            // 也支持 focus 事件（当通过 Tab 键聚焦时）
+            input.addEventListener('focus', function() {
+              // 延迟执行，避免与点击事件冲突
+              setTimeout(function() {
+                if (document.activeElement === input && typeof input.showPicker === 'function') {
+                  input.showPicker();
+                }
+              }, 100);
+            });
             
             input.addEventListener('change', updateTitle);
             input.addEventListener('input', updateTitle);

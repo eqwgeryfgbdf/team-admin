@@ -6,7 +6,7 @@ function renderDateInput(name: string, value?: string | null, required = false):
   return `
     <div class="date-input-wrapper">
       <input name="${escapeHtml(name)}" type="date"${valueAttr}${requiredAttr} />
-      <button type="button" class="date-icon-btn" aria-label="选择日期" onclick="this.previousElementSibling.showPicker ? this.previousElementSibling.showPicker() : this.previousElementSibling.focus()">
+      <button type="button" class="date-icon-btn" aria-label="选择日期" onclick="(function(e){e.stopPropagation();const input=this.previousElementSibling;if(input&&typeof input.showPicker==='function'){input.showPicker();}else if(input){input.focus();}}).call(this,event)">
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
         </svg>

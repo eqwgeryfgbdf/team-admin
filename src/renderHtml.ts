@@ -11,6 +11,7 @@ export type LayoutOptions = {
   csrfToken?: string;
   body: string;
   flash?: { type: "info" | "error" | "success"; message: string };
+  outsideContainer?: string;
 };
 
 export function escapeHtml(input: string): string {
@@ -32,6 +33,7 @@ function renderNav(user: LayoutUser, csrfToken: string) {
         <div class="nav__links">
           <a class="nav__link" href="/app">儀表板</a>
           <a class="nav__link" href="/events">活動</a>
+          <a class="nav__link" href="/calendar">日曆</a>
           ${user.role === "admin" ? `<a class="nav__link" href="/members">成員</a>` : ""}
           <a class="nav__link" href="/profile">個人資料</a>
         </div>
@@ -51,7 +53,7 @@ function renderNav(user: LayoutUser, csrfToken: string) {
 }
 
 export function renderLayout(opts: LayoutOptions): string {
-  const { title, user, body, flash } = opts;
+  const { title, user, body, flash, outsideContainer } = opts;
   const csrfToken = opts.csrfToken ?? "";
 
   const flashHtml = flash
@@ -659,6 +661,32 @@ export function renderLayout(opts: LayoutOptions): string {
           gap: 12px;
         }
         
+        /* 日曆容器 */
+        .calendar-container {
+          position: relative;
+          width: 100%;
+          padding-bottom: 75%;
+          height: 0;
+          overflow: hidden;
+          background: var(--bg-secondary);
+          border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+        }
+        
+        .calendar-iframe {
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          border: 0;
+        }
+        
+        @media (max-width: 768px) {
+          .calendar-container {
+            padding-bottom: 100%;
+          }
+        }
+        
         /* 響應式 */
         @media (max-width: 768px) {
           .nav { padding: 12px 16px; }
@@ -794,6 +822,7 @@ export function renderLayout(opts: LayoutOptions): string {
         ${flashHtml}
         ${body}
       </div>
+      ${outsideContainer || ""}
     </body>
   </html>`;
 }

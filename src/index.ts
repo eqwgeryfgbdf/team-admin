@@ -658,12 +658,14 @@ export default {
         ).all()) as {
           results: Array<{ id: string; email: string; role: "admin" | "member"; display_name: string; is_active: number; created_at: number }>;
         };
+        const membersList = renderMembersList({ users: res.results, csrfToken: session.csrfToken, currentUserId: session.user.id });
         return htmlResponse(
           renderLayout({
             title: "成員",
             user: session.user,
             csrfToken: session.csrfToken,
-            body: renderMembersList({ users: res.results, csrfToken: session.csrfToken, currentUserId: session.user.id }),
+            body: membersList.body,
+            outsideContainer: membersList.outsideContainer,
           })
         );
       }
@@ -865,6 +867,18 @@ export default {
 
           throw new HttpError(400, "未知操作");
         }
+      }
+
+      // Calendar
+      if (pathname === "/calendar" && request.method === "GET") {
+        return htmlResponse(
+          renderLayout({
+            title: "日曆",
+            user: session.user,
+            csrfToken: session.csrfToken,
+            body: renderCalendar(),
+          })
+        );
       }
 
       // Events
@@ -1470,7 +1484,7 @@ function renderMembersList(args: {
   users: Array<{ id: string; email: string; role: "admin" | "member"; display_name: string; is_active: number; created_at: number }>;
   csrfToken: string;
   currentUserId: string;
-}) {
+}): { body: string; outsideContainer: string } {
   const rows = args.users
     .map((u) => {
       const status = u.is_active ? `<span class="pill pill--green">${escapeHtml(translateUserStatus(u.is_active))}</span>` : `<span class="pill pill--red">${escapeHtml(translateUserStatus(u.is_active))}</span>`;
@@ -1498,12 +1512,15 @@ function renderMembersList(args: {
     })
     .join("");
 
-  return `
+  return {
+    body: `
     <div class="row">
       <h1 style="margin: 0;">成員</h1>
       <div class="spacer"></div>
       <a class="btn btn--primary" href="/members/new">新增成員</a>
     </div>
+  `,
+    outsideContainer: `
     <div class="card">
       <table>
         <thead><tr><th>名稱</th><th>Email</th><th>角色</th><th>狀態</th><th>建立時間</th><th>操作</th></tr></thead>
@@ -1511,7 +1528,8 @@ function renderMembersList(args: {
       </table>
       ${rows ? "" : `<div class="muted" style="margin-top: 10px;">尚無成員。</div>`}
     </div>
-  `;
+  `
+  };
 }
 
 function renderMemberCreateForm(args: { csrfToken: string }) {
@@ -2535,6 +2553,27 @@ function renderKanbanBoard(args: {
       ${columnsHtml}
     </div>
     ${memberOverviewHtml}
+  `;
+}
+
+function renderCalendar() {
+  return `
+    <h1>日曆</h1>
+    <div class="card" style="padding: 0; overflow: hidden;">
+      <div style="padding: 24px; border-bottom: 1px solid var(--border);">
+        <div class="card__title">Google 日曆</div>
+        <div class="muted" style="margin-top: 8px;">查看團隊活動和重要日期</div>
+      </div>
+      <div class="calendar-container">
+        <iframe 
+          src="https://calendar.google.com/calendar/embed?src=5b9f7c8199de4cf433be7d08113240b84c80f369afb957473a7d56315f1d6916%40group.calendar.google.com&ctz=Asia%2FTaipei" 
+          class="calendar-iframe"
+          frameborder="0" 
+          scrolling="no"
+          title="Google 日曆">
+        </iframe>
+      </div>
+    </div>
   `;
 }
 

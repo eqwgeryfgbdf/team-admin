@@ -257,6 +257,84 @@ async function postDiscord(env: Env, content: string): Promise<void> {
   }
 }
 
+// 狀態和身份的中文映射
+function translateRole(role: string): string {
+  const roleMap: Record<string, string> = {
+    admin: "管理員",
+    member: "成員",
+  };
+  return roleMap[role.toLowerCase()] || role;
+}
+
+function translateUserStatus(isActive: number | boolean): string {
+  return isActive ? "啟用" : "停用";
+}
+
+function translateEventStatus(status: string): string {
+  const statusMap: Record<string, string> = {
+    planned: "計劃中",
+    active: "進行中",
+    completed: "已完成",
+    cancelled: "已取消",
+  };
+  return statusMap[status.toLowerCase()] || status;
+}
+
+function translateTaskStatus(status: string): string {
+  const statusMap: Record<string, string> = {
+    todo: "待辦",
+    in_progress: "進行中",
+    done: "已完成",
+    blocked: "受阻",
+  };
+  return statusMap[status.toLowerCase()] || status;
+}
+
+function translateGoalStatus(status: string): string {
+  const statusMap: Record<string, string> = {
+    open: "開啟",
+    on_track: "正常",
+    at_risk: "有風險",
+    achieved: "已達成",
+    dropped: "已放棄",
+  };
+  return statusMap[status.toLowerCase()] || status;
+}
+
+function translateParticipantRole(role: string): string {
+  const roleMap: Record<string, string> = {
+    participant: "參與者",
+    owner: "擁有者",
+  };
+  return roleMap[role.toLowerCase()] || role;
+}
+
+function translateEntityType(type: string): string {
+  const typeMap: Record<string, string> = {
+    event: "活動",
+    task: "任務",
+    goal: "目標",
+  };
+  return typeMap[type.toLowerCase()] || type;
+}
+
+function translateStatus(status: string, type?: "event" | "task" | "goal"): string {
+  if (type === "event") return translateEventStatus(status);
+  if (type === "task") return translateTaskStatus(status);
+  if (type === "goal") return translateGoalStatus(status);
+  // 自動判斷類型
+  if (["planned", "active", "completed", "cancelled"].includes(status.toLowerCase())) {
+    return translateEventStatus(status);
+  }
+  if (["todo", "in_progress", "done", "blocked"].includes(status.toLowerCase())) {
+    return translateTaskStatus(status);
+  }
+  if (["open", "on_track", "at_risk", "achieved", "dropped"].includes(status.toLowerCase())) {
+    return translateGoalStatus(status);
+  }
+  return status;
+}
+
 function pillForStatus(status: string) {
   const s = status.toLowerCase();
   if (["done", "completed", "achieved"].includes(s)) return "pill pill--green";
@@ -1202,7 +1280,7 @@ function renderDashboard(args: {
                 (e) => `
                   <tr>
                     <td><a href="/events/${escapeHtml(e.id)}"><strong>${escapeHtml(e.title)}</strong></a></td>
-                    <td><span class="${pillForStatus(e.status)}">${escapeHtml(e.status)}</span></td>
+                    <td><span class="${pillForStatus(e.status)}">${escapeHtml(translateEventStatus(e.status))}</span></td>
                     <td class="muted">${escapeHtml([e.start_date, e.end_date].filter(Boolean).join(" → "))}</td>
                     <td class="muted">${escapeHtml(new Date(e.updated_at).toLocaleString("zh-TW", { hour12: false }))}</td>
                   </tr>
@@ -1228,7 +1306,7 @@ function renderDashboard(args: {
         <div class="card__title">團隊概況</div>
         <div class="row">
           <span class="pill pill--purple">啟用成員：${membersCount}</span>
-          <span class="pill">你的角色：${escapeHtml(user.role)}</span>
+          <span class="pill">你的角色：${escapeHtml(translateRole(user.role))}</span>
         </div>
       </div>
     </div>
@@ -1243,7 +1321,7 @@ function renderMembersList(args: {
 }) {
   const rows = args.users
     .map((u) => {
-      const status = u.is_active ? `<span class="pill pill--green">active</span>` : `<span class="pill pill--red">inactive</span>`;
+      const status = u.is_active ? `<span class="pill pill--green">${escapeHtml(translateUserStatus(u.is_active))}</span>` : `<span class="pill pill--red">${escapeHtml(translateUserStatus(u.is_active))}</span>`;
       // 管理员不能删除自己
       const isCurrentUser = u.id === args.currentUserId;
       const deleteBtn = isCurrentUser && u.role === "admin"
@@ -1259,7 +1337,7 @@ function renderMembersList(args: {
         <tr>
           <td><a href="/members/${escapeHtml(u.id)}"><strong>${escapeHtml(u.display_name)}</strong></a></td>
           <td class="muted">${escapeHtml(u.email)}</td>
-          <td><span class="${pillForStatus(u.role)}">${escapeHtml(u.role)}</span></td>
+          <td><span class="${pillForStatus(u.role)}">${escapeHtml(translateRole(u.role))}</span></td>
           <td>${status}</td>
           <td class="muted">${escapeHtml(new Date(u.created_at).toLocaleString("zh-TW", { hour12: false }))}</td>
           <td>${deleteBtn}</td>
@@ -1308,8 +1386,8 @@ function renderMemberCreateForm(args: { csrfToken: string }) {
           <div>
             <label>角色</label>
             <select name="role">
-              <option value="member">member</option>
-              <option value="admin">admin</option>
+              <option value="member">${escapeHtml(translateRole("member"))}</option>
+              <option value="admin">${escapeHtml(translateRole("admin"))}</option>
             </select>
           </div>
           <div>
@@ -1353,8 +1431,8 @@ function renderMemberDetail(args: {
       <div class="card">
         <div class="card__title">基本資料</div>
         <div class="muted">Email：<code class="inline">${escapeHtml(member.email)}</code></div>
-        <div class="muted">角色：<span class="${pillForStatus(member.role)}">${escapeHtml(member.role)}</span></div>
-        <div class="muted">狀態：${member.is_active ? `<span class="pill pill--green">active</span>` : `<span class="pill pill--red">inactive</span>`}</div>
+        <div class="muted">角色：<span class="${pillForStatus(member.role)}">${escapeHtml(translateRole(member.role))}</span></div>
+        <div class="muted">狀態：${member.is_active ? `<span class="pill pill--green">${escapeHtml(translateUserStatus(member.is_active))}</span>` : `<span class="pill pill--red">${escapeHtml(translateUserStatus(member.is_active))}</span>`}</div>
         <div class="muted">建立：${escapeHtml(new Date(member.created_at).toLocaleString("zh-TW", { hour12: false }))}</div>
       </div>
 
@@ -1415,15 +1493,15 @@ function renderMemberDetail(args: {
                 <div>
                   <label>角色</label>
                   <select name="role">
-                    <option value="member" ${member.role === "member" ? "selected" : ""}>member</option>
-                    <option value="admin" ${member.role === "admin" ? "selected" : ""}>admin</option>
+                    <option value="member" ${member.role === "member" ? "selected" : ""}>${escapeHtml(translateRole("member"))}</option>
+                    <option value="admin" ${member.role === "admin" ? "selected" : ""}>${escapeHtml(translateRole("admin"))}</option>
                   </select>
                 </div>
                 <div>
                   <label>狀態</label>
                   <select name="is_active">
-                    <option value="1" ${member.is_active ? "selected" : ""}>active</option>
-                    <option value="0" ${!member.is_active ? "selected" : ""}>inactive</option>
+                    <option value="1" ${member.is_active ? "selected" : ""}>${escapeHtml(translateUserStatus(1))}</option>
+                    <option value="0" ${!member.is_active ? "selected" : ""}>${escapeHtml(translateUserStatus(0))}</option>
                   </select>
                 </div>
               </div>
@@ -1576,9 +1654,9 @@ function renderEventDetail(args: {
                     : "";
                 return `
                   <tr>
-                    <td><strong>${escapeHtml(p.display_name)}</strong> <span class="muted">(${escapeHtml(p.participant_role)})</span></td>
+                    <td><strong>${escapeHtml(p.display_name)}</strong> <span class="muted">(${escapeHtml(translateParticipantRole(p.participant_role))})</span></td>
                     <td class="muted">${escapeHtml(p.email)}</td>
-                    <td><span class="${pillForStatus(p.role)}">${escapeHtml(p.role)}</span></td>
+                    <td><span class="${pillForStatus(p.role)}">${escapeHtml(translateRole(p.role))}</span></td>
                     <td>${removeBtn}</td>
                   </tr>
                 `;
@@ -1628,7 +1706,7 @@ function renderEventDetail(args: {
                         ${renderTaskEditForm({ task: t, eventId: event.id, csrfToken, allUsers, isAdmin: viewer.role === "admin" })}
                       </details>
                     </td>
-                    <td><span class="${pillForStatus(t.status)}">${escapeHtml(t.status)}</span></td>
+                    <td><span class="${pillForStatus(t.status)}">${escapeHtml(translateTaskStatus(t.status))}</span></td>
                     <td class="muted">${escapeHtml(t.assignee_name ?? "—")}</td>
                     <td class="muted">${escapeHtml(t.due_date ?? "—")}</td>
                   </tr>
@@ -1656,7 +1734,7 @@ function renderEventDetail(args: {
                         ${renderGoalEditForm({ goal: g, eventId: event.id, csrfToken })}
                       </details>
                     </td>
-                    <td><span class="${pillForStatus(g.status)}">${escapeHtml(g.status)}</span></td>
+                    <td><span class="${pillForStatus(g.status)}">${escapeHtml(translateGoalStatus(g.status))}</span></td>
                     <td class="muted">${escapeHtml(g.due_date ?? "—")}</td>
                   </tr>
                 `
@@ -1674,7 +1752,7 @@ function renderEventDetail(args: {
               (p) => `
               <div class="card" style="box-shadow:none; background: rgba(255,255,255,0.04);">
                 <div class="row">
-                  <span class="pill">${escapeHtml(p.entity_type)}</span>
+                  <span class="pill">${escapeHtml(translateEntityType(p.entity_type))}</span>
                   ${p.progress_percent === null ? "" : `<span class="pill pill--green">${escapeHtml(String(p.progress_percent))}%</span>`}
                   <div class="spacer"></div>
                   <span class="muted">${escapeHtml(new Date(p.created_at).toLocaleString("zh-TW", { hour12: false }))}</span>
@@ -1719,7 +1797,7 @@ function renderEventDetail(args: {
 
     <div class="card" style="margin-top: 12px;">
       <div class="row">
-        <span class="${pillForStatus(event.status)}">${escapeHtml(event.status)}</span>
+        <span class="${pillForStatus(event.status)}">${escapeHtml(translateEventStatus(event.status))}</span>
         ${dateRange ? `<span class="pill">${escapeHtml(dateRange)}</span>` : `<span class="pill">未設定日期</span>`}
         <div class="spacer"></div>
         <span class="muted">更新：${escapeHtml(new Date(event.updated_at).toLocaleString("zh-TW", { hour12: false }))}</span>
@@ -1738,7 +1816,7 @@ function renderEventDetail(args: {
               <label>狀態</label>
               <select name="status">
                 ${["planned", "active", "completed", "cancelled"]
-                  .map((s) => `<option value="${escapeHtml(s)}" ${event.status === s ? "selected" : ""}>${escapeHtml(s)}</option>`)
+                  .map((s) => `<option value="${escapeHtml(s)}" ${event.status === s ? "selected" : ""}>${escapeHtml(translateEventStatus(s))}</option>`)
                   .join("")}
               </select>
             </div>
@@ -1874,7 +1952,7 @@ function renderTaskEditForm(args: {
           <label>狀態</label>
           <select name="status">
             ${["todo", "in_progress", "done", "blocked"]
-              .map((s) => `<option value="${escapeHtml(s)}" ${task.status === s ? "selected" : ""}>${escapeHtml(s)}</option>`)
+              .map((s) => `<option value="${escapeHtml(s)}" ${task.status === s ? "selected" : ""}>${escapeHtml(translateTaskStatus(s))}</option>`)
               .join("")}
           </select>
         </div>
@@ -1940,7 +2018,7 @@ function renderGoalEditForm(args: {
           <label>狀態</label>
           <select name="status">
             ${["open", "on_track", "at_risk", "achieved", "dropped"]
-              .map((s) => `<option value="${escapeHtml(s)}" ${goal.status === s ? "selected" : ""}>${escapeHtml(s)}</option>`)
+              .map((s) => `<option value="${escapeHtml(s)}" ${goal.status === s ? "selected" : ""}>${escapeHtml(translateGoalStatus(s))}</option>`)
               .join("")}
           </select>
         </div>

@@ -201,15 +201,23 @@ async function createSession(env: Env, userId: string): Promise<{ sessionId: str
   const logData13 = {location:'index.ts:185',message:'before DB INSERT sessions',data:{sessionId,userId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'I'};
   fetch('http://127.0.0.1:7243/ingest/d767ce96-12cd-489a-a0f5-5a7461b6091e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logData13)}).catch(()=>{}); console.error('[DEBUG]', JSON.stringify(logData13));
   // #endregion
-  await env.DB.prepare(
-    "INSERT INTO sessions (id, user_id, csrf_token, created_at, last_seen_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)"
-  )
-    .bind(sessionId, userId, csrfToken, ts, ts, expiresAt)
-    .run();
-  // #region agent log
-  const logData14 = {location:'index.ts:189',message:'after DB INSERT sessions',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'I'};
-  fetch('http://127.0.0.1:7243/ingest/d767ce96-12cd-489a-a0f5-5a7461b6091e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logData14)}).catch(()=>{}); console.error('[DEBUG]', JSON.stringify(logData14));
-  // #endregion
+  try {
+    await env.DB.prepare(
+      "INSERT INTO sessions (id, user_id, csrf_token, created_at, last_seen_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)"
+    )
+      .bind(sessionId, userId, csrfToken, ts, ts, expiresAt)
+      .run();
+    // #region agent log
+    const logData14 = {location:'index.ts:189',message:'after DB INSERT sessions',data:{success:true},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'I'};
+    fetch('http://127.0.0.1:7243/ingest/d767ce96-12cd-489a-a0f5-5a7461b6091e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logData14)}).catch(()=>{}); console.error('[DEBUG]', JSON.stringify(logData14));
+    // #endregion
+  } catch (dbErr) {
+    // #region agent log
+    const logDataErr2 = {location:'index.ts:208',message:'DB INSERT sessions failed',data:{error:dbErr instanceof Error?dbErr.message:String(dbErr),errorType:dbErr?.constructor?.name,stack:dbErr instanceof Error?dbErr.stack:undefined},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'I'};
+    fetch('http://127.0.0.1:7243/ingest/d767ce96-12cd-489a-a0f5-5a7461b6091e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logDataErr2)}).catch(()=>{}); console.error('[DEBUG]', JSON.stringify(logDataErr2));
+    // #endregion
+    throw new HttpError(500, `建立 session 失敗：${dbErr instanceof Error ? dbErr.message : String(dbErr)}`);
+  }
   return { sessionId, csrfToken };
 }
 
@@ -368,16 +376,28 @@ export default {
         const logData8 = {location:'index.ts:327',message:'before DB INSERT users',data:{userId,email,hasDB:!!env.DB},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H'};
         fetch('http://127.0.0.1:7243/ingest/d767ce96-12cd-489a-a0f5-5a7461b6091e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logData8)}).catch(()=>{}); console.error('[DEBUG]', JSON.stringify(logData8));
         // #endregion
-        await env.DB.prepare(
-          `INSERT INTO users (id, email, password_hash, password_salt, role, display_name, created_at)
-           VALUES (?, ?, ?, ?, 'admin', ?, ?)`
-        )
-          .bind(userId, email, hash, salt, displayName, ts)
-          .run();
-        // #region agent log
-        const logData9 = {location:'index.ts:332',message:'after DB INSERT users',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H'};
-        fetch('http://127.0.0.1:7243/ingest/d767ce96-12cd-489a-a0f5-5a7461b6091e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logData9)}).catch(()=>{}); console.error('[DEBUG]', JSON.stringify(logData9));
-        // #endregion
+        try {
+          const result = await env.DB.prepare(
+            `INSERT INTO users (id, email, password_hash, password_salt, role, display_name, created_at)
+             VALUES (?, ?, ?, ?, 'admin', ?, ?)`
+          )
+            .bind(userId, email, hash, salt, displayName, ts)
+            .run();
+          // #region agent log
+          const logData9 = {location:'index.ts:332',message:'after DB INSERT users',data:{success:true,result},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H'};
+          fetch('http://127.0.0.1:7243/ingest/d767ce96-12cd-489a-a0f5-5a7461b6091e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logData9)}).catch(()=>{}); console.error('[DEBUG]', JSON.stringify(logData9));
+          // #endregion
+        } catch (dbErr) {
+          // #region agent log
+          const logDataErr = {location:'index.ts:376',message:'DB INSERT users failed',data:{error:dbErr instanceof Error?dbErr.message:String(dbErr),errorType:dbErr?.constructor?.name,stack:dbErr instanceof Error?dbErr.stack:undefined,errorString:String(dbErr)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H'};
+          fetch('http://127.0.0.1:7243/ingest/d767ce96-12cd-489a-a0f5-5a7461b6091e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logDataErr)}).catch(()=>{}); console.error('[DEBUG]', JSON.stringify(logDataErr));
+          // #endregion
+          const errMsg = dbErr instanceof Error ? dbErr.message : String(dbErr);
+          if (errMsg.includes('no such table') || errMsg.includes('does not exist')) {
+            throw new HttpError(500, "資料庫尚未初始化（缺少 tables）。請先執行 `wrangler d1 migrations apply DB --remote` 再重試。");
+          }
+          throw new HttpError(500, `資料庫錯誤：${errMsg}`);
+        }
 
         // #region agent log
         const logData10 = {location:'index.ts:334',message:'before createSession',data:{userId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'I'};

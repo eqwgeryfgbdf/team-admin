@@ -527,12 +527,50 @@ export default {
         const membersRow = (await env.DB.prepare("SELECT COUNT(*) as c FROM users WHERE is_active = 1").first()) as { c?: number } | null;
         const membersCount = Number(membersRow?.c ?? 0);
 
+        // 查询所有任务用于看板视图
+        const allTasks = (await env.DB.prepare(
+          `SELECT t.id, t.title, t.description, t.status, t.due_date, t.assignee_user_id, t.event_id,
+                  u.display_name as assignee_name, u.id as assignee_id,
+                  e.title as event_title, e.id as event_id
+           FROM tasks t
+           LEFT JOIN users u ON u.id = t.assignee_user_id
+           LEFT JOIN events e ON e.id = t.event_id
+           ORDER BY t.updated_at DESC`
+        ).all()) as {
+          results: Array<{
+            id: string;
+            title: string;
+            description: string | null;
+            status: string;
+            due_date: string | null;
+            assignee_user_id: string | null;
+            assignee_name: string | null;
+            assignee_id: string | null;
+            event_id: string;
+            event_title: string;
+          }>;
+        };
+
+        // 查询所有成员用于看板
+        const allMembers = (await env.DB.prepare(
+          "SELECT id, display_name, email FROM users WHERE is_active = 1 ORDER BY display_name ASC"
+        ).all()) as {
+          results: Array<{ id: string; display_name: string; email: string }>;
+        };
+
         return htmlResponse(
           renderLayout({
             title: "儀表板",
             user: session.user,
             csrfToken: session.csrfToken,
-            body: renderDashboard({ user: session.user, membersCount, events: events.results }),
+            body: renderDashboard({ 
+              user: session.user, 
+              membersCount, 
+              events: events.results,
+              tasks: allTasks.results,
+              members: allMembers.results,
+              csrfToken: session.csrfToken
+            }),
           })
         );
       }
@@ -1267,8 +1305,22 @@ function renderDashboard(args: {
   user: LayoutUser;
   membersCount: number;
   events: Array<{ id: string; title: string; status: string; start_date: string | null; end_date: string | null; updated_at: number }>;
+  tasks: Array<{
+    id: string;
+    title: string;
+    description: string | null;
+    status: string;
+    due_date: string | null;
+    assignee_user_id: string | null;
+    assignee_name: string | null;
+    assignee_id: string | null;
+    event_id: string;
+    event_title: string;
+  }>;
+  members: Array<{ id: string; display_name: string; email: string }>;
+  csrfToken: string;
 }) {
-  const { user, membersCount, events } = args;
+  const { user, membersCount, events, tasks, members, csrfToken } = args;
   const eventsHtml =
     events.length === 0
       ? `<div class="muted">目前尚無活動。</div>`
@@ -1310,6 +1362,8 @@ function renderDashboard(args: {
         </div>
       </div>
     </div>
+    <h2>任務看板</h2>
+    ${renderKanbanBoard({ tasks, members, user, csrfToken })}
     <h2>最近活動</h2>
   `;
 }
@@ -2099,6 +2153,212 @@ function renderDocUploadForm(args: { eventId: string; csrfToken: string }) {
         </div>
       </div>
     </form>
+  `;
+}
+
+function renderKanbanBoard(args: {
+  tasks: Array<{
+    id: string;
+    title: string;
+    description: string | null;
+    status: string;
+    due_date: string | null;
+    assignee_user_id: string | null;
+    assignee_name: string | null;
+    assignee_id: string | null;
+    event_id: string;
+    event_title: string;
+  }>;
+  members: Array<{ id: string; display_name: string; email: string }>;
+  user: LayoutUser;
+  csrfToken: string;
+}) {
+  const { tasks, members, user, csrfToken } = args;
+
+  // 按状态分组任务
+  const tasksByStatus: Record<string, typeof tasks> = {
+    todo: [],
+    in_progress: [],
+    done: [],
+    blocked: [],
+  };
+
+  tasks.forEach((task) => {
+    const status = task.status || "todo";
+    if (tasksByStatus[status]) {
+      tasksByStatus[status].push(task);
+    } else {
+      tasksByStatus.todo.push(task);
+    }
+  });
+
+  // 计算每个状态的进度百分比
+  const totalTasks = tasks.length;
+  const doneCount = tasksByStatus.done.length;
+  const progressPercent = totalTasks > 0 ? Math.round((doneCount / totalTasks) * 100) : 0;
+
+  // 按成员分组任务
+  const tasksByMember: Record<string, typeof tasks> = {};
+  members.forEach((member) => {
+    tasksByMember[member.id] = tasks.filter((t) => t.assignee_id === member.id);
+  });
+  const unassignedTasks = tasks.filter((t) => !t.assignee_id);
+
+  // 状态列配置
+  const statusColumns = [
+    { key: "todo", label: "待辦", color: "yellow" },
+    { key: "in_progress", label: "進行中", color: "purple" },
+    { key: "done", label: "已完成", color: "green" },
+    { key: "blocked", label: "受阻", color: "red" },
+  ];
+
+  // 渲染任务卡片
+  function renderTaskCard(task: typeof tasks[0], currentStatus: string) {
+    const dueDateHtml = task.due_date
+      ? `<div class="kanban-card__due muted">期限：${escapeHtml(task.due_date)}</div>`
+      : "";
+    const assigneeHtml = task.assignee_name
+      ? `<div class="kanban-card__assignee">
+          <span class="pill pill--small">${escapeHtml(task.assignee_name)}</span>
+        </div>`
+      : `<div class="kanban-card__assignee">
+          <span class="pill pill--small pill--gray">未分配</span>
+        </div>`;
+
+    // 快速状态切换按钮（只显示其他状态）
+    const statusOptions = [
+      { key: "todo", label: "待辦" },
+      { key: "in_progress", label: "進行中" },
+      { key: "done", label: "已完成" },
+      { key: "blocked", label: "受阻" },
+    ].filter((s) => s.key !== currentStatus);
+
+    const quickActionsHtml = statusOptions.length > 0
+      ? `
+        <div class="kanban-card__actions">
+          ${statusOptions
+            .map(
+              (opt) => `
+            <form method="post" action="/tasks/${escapeHtml(task.id)}/update" style="display:inline;" onsubmit="event.stopPropagation();">
+              <input type="hidden" name="csrf" value="${escapeHtml(csrfToken)}" />
+              <input type="hidden" name="event_id" value="${escapeHtml(task.event_id)}" />
+              <input type="hidden" name="title" value="${escapeHtml(task.title)}" />
+              <input type="hidden" name="description" value="${escapeHtml(task.description || "")}" />
+              <input type="hidden" name="status" value="${escapeHtml(opt.key)}" />
+              <input type="hidden" name="due_date" value="${escapeHtml(task.due_date || "")}" />
+              <input type="hidden" name="assignee_user_id" value="${escapeHtml(task.assignee_user_id || "")}" />
+              <button type="submit" class="btn btn--small btn--ghost" title="移至${escapeHtml(opt.label)}">${escapeHtml(opt.label)}</button>
+            </form>
+          `
+            )
+            .join("")}
+        </div>
+      `
+      : "";
+
+    return `
+      <div class="kanban-card" data-task-id="${escapeHtml(task.id)}">
+        <div class="kanban-card__header">
+          <a href="/events/${escapeHtml(task.event_id)}" class="kanban-card__event">${escapeHtml(task.event_title)}</a>
+        </div>
+        <div class="kanban-card__title">${escapeHtml(task.title)}</div>
+        ${task.description ? `<div class="kanban-card__description muted">${escapeHtml(task.description)}</div>` : ""}
+        <div class="kanban-card__footer">
+          ${assigneeHtml}
+          ${dueDateHtml}
+        </div>
+        ${quickActionsHtml}
+      </div>
+    `;
+  }
+
+  // 渲染状态列
+  const columnsHtml = statusColumns
+    .map((col) => {
+      const columnTasks = tasksByStatus[col.key] || [];
+      const count = columnTasks.length;
+      return `
+        <div class="kanban-column">
+          <div class="kanban-column__header">
+            <span class="pill pill--${col.color}">${escapeHtml(col.label)}</span>
+            <span class="kanban-column__count">${count}</span>
+          </div>
+          <div class="kanban-column__content" data-status="${escapeHtml(col.key)}">
+            ${count === 0 ? `<div class="muted" style="padding: 16px; text-align: center;">尚無任務</div>` : columnTasks.map((task) => renderTaskCard(task, col.key)).join("")}
+          </div>
+        </div>
+      `;
+    })
+    .join("");
+
+  // 成员任务概览
+  const memberOverviewHtml = members.length > 0
+    ? `
+      <div class="card" style="margin-top: 24px;">
+        <div class="card__title">成員任務分配</div>
+        <div class="member-overview">
+          ${members
+            .map((member) => {
+              const memberTasks = tasksByMember[member.id] || [];
+              const memberDoneCount = memberTasks.filter((t) => t.status === "done").length;
+              const memberProgress = memberTasks.length > 0 ? Math.round((memberDoneCount / memberTasks.length) * 100) : 0;
+              return `
+                <div class="member-overview__item">
+                  <div class="member-overview__name">
+                    <strong>${escapeHtml(member.display_name)}</strong>
+                    <span class="pill pill--small">${memberTasks.length} 任務</span>
+                  </div>
+                  <div class="member-overview__progress">
+                    <div class="progress-bar">
+                      <div class="progress-bar__fill" style="width: ${memberProgress}%"></div>
+                    </div>
+                    <span class="muted">${memberProgress}%</span>
+                  </div>
+                </div>
+              `;
+            })
+            .join("")}
+          ${unassignedTasks.length > 0
+            ? `
+              <div class="member-overview__item">
+                <div class="member-overview__name">
+                  <strong>未分配</strong>
+                  <span class="pill pill--small pill--gray">${unassignedTasks.length} 任務</span>
+                </div>
+                <div class="member-overview__progress">
+                  <div class="progress-bar">
+                    <div class="progress-bar__fill" style="width: 0%"></div>
+                  </div>
+                  <span class="muted">—</span>
+                </div>
+              </div>
+            `
+            : ""}
+        </div>
+      </div>
+    `
+    : "";
+
+  return `
+    <div class="card">
+      <div class="kanban-header">
+        <div class="kanban-header__title">總體進度</div>
+        <div class="kanban-header__progress">
+          <div class="progress-bar progress-bar--large">
+            <div class="progress-bar__fill" style="width: ${progressPercent}%"></div>
+          </div>
+          <span class="kanban-header__percent">${progressPercent}%</span>
+        </div>
+        <div class="kanban-header__stats">
+          <span class="pill">總任務：${totalTasks}</span>
+          <span class="pill pill--green">已完成：${doneCount}</span>
+        </div>
+      </div>
+    </div>
+    <div class="kanban-board">
+      ${columnsHtml}
+    </div>
+    ${memberOverviewHtml}
   `;
 }
 

@@ -14,6 +14,9 @@ export type LayoutOptions = {
 };
 
 export function escapeHtml(input: string): string {
+  if (!input) return "";
+  // 快速检查是否包含需要转义的字符，避免不必要的处理
+  if (!/[&<>"']/.test(input)) return input;
   return input
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
@@ -95,7 +98,12 @@ export function renderLayout(opts: LayoutOptions): string {
           z-index: 10;
         }
         .nav__brand { font-weight: 700; letter-spacing: 0.4px; margin-right: 6px; }
-        .nav__link { color: var(--muted); padding: 8px 10px; border-radius: 10px; }
+        .nav__link { 
+          color: var(--muted); 
+          padding: 8px 10px; 
+          border-radius: 10px;
+          transition: color 0.15s ease, background-color 0.15s ease;
+        }
         .nav__link:hover { color: var(--text); background: rgba(255,255,255,0.06); }
         .nav__logout { margin-left: auto; }
         h1 { font-size: 28px; margin: 16px 0 10px; }
@@ -110,6 +118,7 @@ export function renderLayout(opts: LayoutOptions): string {
           border-radius: var(--radius);
           box-shadow: var(--shadow);
           padding: 14px 14px;
+          contain: layout style paint;
         }
         .card__title { font-weight: 700; margin-bottom: 10px; }
         .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
@@ -128,6 +137,9 @@ export function renderLayout(opts: LayoutOptions): string {
           color: var(--text);
           cursor: pointer;
         }
+        .btn { 
+          transition: background-color 0.15s ease, border-color 0.15s ease;
+        }
         .btn:hover { background: rgba(255,255,255,0.12); }
         .btn--primary { background: rgba(124,58,237,0.22); border-color: rgba(124,58,237,0.55); }
         .btn--primary:hover { background: rgba(124,58,237,0.28); }
@@ -144,9 +156,17 @@ export function renderLayout(opts: LayoutOptions): string {
           color: var(--text);
           outline: none;
         }
-        input:focus, textarea:focus, select:focus { border-color: rgba(124,58,237,0.7); box-shadow: 0 0 0 3px rgba(124,58,237,0.18); }
+        input:focus, textarea:focus, select:focus { 
+          border-color: rgba(124,58,237,0.7); 
+          box-shadow: 0 0 0 3px rgba(124,58,237,0.18); 
+        }
         textarea { min-height: 90px; resize: vertical; }
-        .date-input-wrapper { position: relative; display: flex; align-items: center; }
+        .date-input-wrapper { 
+          position: relative; 
+          display: flex; 
+          align-items: center;
+          contain: layout;
+        }
         .date-input-wrapper input[type="date"] { 
           padding-right: 40px; 
           cursor: pointer;
@@ -159,6 +179,7 @@ export function renderLayout(opts: LayoutOptions): string {
           filter: invert(1);
           width: 20px;
           height: 20px;
+          transition: opacity 0.15s ease;
         }
         .date-input-wrapper input[type="date"]::-webkit-calendar-picker-indicator:hover {
           opacity: 1;
@@ -175,14 +196,20 @@ export function renderLayout(opts: LayoutOptions): string {
           align-items: center;
           justify-content: center;
           z-index: 1;
+          transition: color 0.15s ease;
         }
         .date-icon-btn:hover { color: var(--text); }
-        .date-icon-btn svg { width: 18px; height: 18px; }
+        .date-icon-btn svg { 
+          width: 18px; 
+          height: 18px; 
+          pointer-events: none;
+        }
         .form { display: grid; gap: 12px; }
         .form__actions { display: flex; gap: 10px; justify-content: flex-end; align-items: center; flex-wrap: wrap; }
         table { width: 100%; border-collapse: collapse; overflow: hidden; border-radius: 12px; border: 1px solid var(--line); }
         th, td { text-align: left; padding: 10px 10px; border-bottom: 1px solid rgba(255,255,255,0.08); vertical-align: top; }
         th { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; background: rgba(255,255,255,0.04); }
+        tr { transition: background-color 0.15s ease; }
         tr:hover td { background: rgba(255,255,255,0.03); }
         code.inline { background: rgba(255,255,255,0.08); padding: 2px 6px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.12); }
         .pill { display: inline-flex; align-items: center; padding: 4px 9px; border-radius: 999px; font-size: 12px; border: 1px solid rgba(255,255,255,0.14); color: var(--muted); }
@@ -192,57 +219,105 @@ export function renderLayout(opts: LayoutOptions): string {
         .pill--red { color: rgba(248,113,113,0.95); border-color: rgba(239,68,68,0.35); background: rgba(239,68,68,0.10); }
       </style>
       <script>
-        // 改善日期输入的用户体验
-        document.addEventListener('DOMContentLoaded', function() {
-          // 改善日期输入的显示格式（显示为中文格式）并添加点击打开日历功能
-          const dateInputs = document.querySelectorAll('input[type="date"]');
-          dateInputs.forEach(function(input) {
-            // 更新 title 以显示格式化日期
-            function updateTitle() {
-              if (input.value) {
-                try {
-                  const date = new Date(input.value + 'T00:00:00');
-                  const formatted = date.toLocaleDateString('zh-TW', { 
-                    year: 'numeric', 
-                    month: '2-digit', 
-                    day: '2-digit' 
-                  });
-                  input.title = formatted;
-                } catch (e) {
-                  // 忽略日期解析错误
-                }
-              } else {
-                input.title = '';
+        // 改善日期输入的用户体验 - 使用事件委托优化性能
+        (function() {
+          'use strict';
+          
+          // 缓存日期格式化选项，避免重复创建
+          const dateFormatOptions = { 
+            year: 'numeric', 
+            month: '2-digit', 
+            day: '2-digit' 
+          };
+          
+          // 日期格式化函数（复用）
+          function formatDate(value) {
+            if (!value) return '';
+            try {
+              const date = new Date(value + 'T00:00:00');
+              return date.toLocaleDateString('zh-TW', dateFormatOptions);
+            } catch (e) {
+              return '';
+            }
+          }
+          
+          // 更新单个输入框的 title
+          function updateInputTitle(input) {
+            input.title = formatDate(input.value);
+          }
+          
+          // 打开日期选择器
+          function openDatePicker(input) {
+            if (typeof input.showPicker === 'function') {
+              try {
+                input.showPicker();
+              } catch (e) {
+                // 某些情况下 showPicker 可能失败，回退到 focus
+                input.focus();
               }
+            } else {
+              input.focus();
+            }
+          }
+          
+          // 使用事件委托优化性能
+          function init() {
+            const dateInputs = document.querySelectorAll('input[type="date"]');
+            const len = dateInputs.length;
+            
+            // 批量初始化 title
+            for (let i = 0; i < len; i++) {
+              updateInputTitle(dateInputs[i]);
             }
             
-            // 点击输入框时自动打开日历选择器
-            input.addEventListener('click', function(e) {
-              // 如果浏览器支持 showPicker() 方法，使用它
-              if (typeof this.showPicker === 'function') {
-                e.preventDefault();
-                this.showPicker();
-              }
-              // 否则让默认行为处理（focus 会触发某些浏览器的日期选择器）
-            });
-            
-            // 也支持 focus 事件（当通过 Tab 键聚焦时）
-            input.addEventListener('focus', function() {
-              // 延迟执行，避免与点击事件冲突
-              setTimeout(function() {
-                if (document.activeElement === input && typeof input.showPicker === 'function') {
-                  input.showPicker();
+            // 使用事件委托处理所有日期输入框的事件
+            document.addEventListener('click', function(e) {
+              const target = e.target;
+              if (target && target.type === 'date') {
+                if (typeof target.showPicker === 'function') {
+                  e.preventDefault();
+                  openDatePicker(target);
                 }
-              }, 100);
-            });
+              }
+            }, true); // 使用捕获阶段提高性能
             
-            input.addEventListener('change', updateTitle);
-            input.addEventListener('input', updateTitle);
+            // 处理 focus 事件（Tab 键导航）
+            let focusTimer = null;
+            document.addEventListener('focus', function(e) {
+              const target = e.target;
+              if (target && target.type === 'date') {
+                clearTimeout(focusTimer);
+                focusTimer = setTimeout(function() {
+                  if (document.activeElement === target) {
+                    openDatePicker(target);
+                  }
+                }, 100);
+              }
+            }, true);
             
-            // 初始化时也格式化
-            updateTitle();
-          });
-        });
+            // 批量处理 change 和 input 事件
+            document.addEventListener('change', function(e) {
+              const target = e.target;
+              if (target && target.type === 'date') {
+                updateInputTitle(target);
+              }
+            }, true);
+            
+            document.addEventListener('input', function(e) {
+              const target = e.target;
+              if (target && target.type === 'date') {
+                updateInputTitle(target);
+              }
+            }, true);
+          }
+          
+          // 如果 DOM 已加载，立即执行；否则等待 DOMContentLoaded
+          if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', init);
+          } else {
+            init();
+          }
+        })();
       </script>
     </head>
     <body>

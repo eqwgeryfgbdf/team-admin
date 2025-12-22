@@ -1,18 +1,14 @@
 import { escapeHtml, renderLayout, type LayoutUser } from "./renderHtml";
 
+// 缓存日历图标 SVG，避免重复生成
+const CALENDAR_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>';
+
 function renderDateInput(name: string, value?: string | null, required = false): string {
+  const escapedName = escapeHtml(name);
   const valueAttr = value ? ` value="${escapeHtml(value)}"` : "";
   const requiredAttr = required ? " required" : "";
-  return `
-    <div class="date-input-wrapper">
-      <input name="${escapeHtml(name)}" type="date"${valueAttr}${requiredAttr} />
-      <button type="button" class="date-icon-btn" aria-label="选择日期" onclick="(function(e){e.stopPropagation();const input=this.previousElementSibling;if(input&&typeof input.showPicker==='function'){input.showPicker();}else if(input){input.focus();}}).call(this,event)">
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-        </svg>
-      </button>
-    </div>
-  `;
+  // 使用更简洁的字符串拼接
+  return `<div class="date-input-wrapper"><input name="${escapedName}" type="date"${valueAttr}${requiredAttr} /><button type="button" class="date-icon-btn" aria-label="选择日期" onclick="(function(e){e.stopPropagation();const i=this.previousElementSibling;if(i&&typeof i.showPicker==='function'){i.showPicker();}else if(i){i.focus();}}).call(this,event)">${CALENDAR_ICON_SVG}</button></div>`;
 }
 
 const SESSION_COOKIE_NAME = "__Host-teamadmin_session";

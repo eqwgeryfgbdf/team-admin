@@ -465,7 +465,7 @@ export default {
             title: "成員",
             user: session.user,
             csrfToken: session.csrfToken,
-            body: renderMembersList({ users: res.results, csrfToken: session.csrfToken }),
+            body: renderMembersList({ users: res.results, csrfToken: session.csrfToken, currentUserId: session.user.id }),
           })
         );
       }
@@ -595,8 +595,13 @@ export default {
             const isSelf = session.user.id === memberId;
             const isAdmin = session.user.role === "admin";
 
-            // 权限检查：管理员可以删除任何人，成员只能删除自己
-            if (!isAdmin && !isSelf) throw new HttpError(403, "沒有權限刪除此成員");
+            // 权限检查：管理员不能删除自己，成员只能删除自己
+            if (isAdmin && isSelf) {
+              throw new HttpError(400, "管理員不能移除自己");
+            }
+            if (!isAdmin && !isSelf) {
+              throw new HttpError(403, "沒有權限刪除此成員");
+            }
 
             // 获取要删除的成员信息
             const memberRow = (await env.DB.prepare("SELECT role FROM users WHERE id = ? LIMIT 1")
@@ -1223,17 +1228,22 @@ function renderDashboard(args: {
 function renderMembersList(args: {
   users: Array<{ id: string; email: string; role: "admin" | "member"; display_name: string; is_active: number; created_at: number }>;
   csrfToken: string;
+  currentUserId: string;
 }) {
   const rows = args.users
     .map((u) => {
       const status = u.is_active ? `<span class="pill pill--green">active</span>` : `<span class="pill pill--red">inactive</span>`;
-      const deleteBtn = `
-        <form method="post" action="/members/${escapeHtml(u.id)}" style="margin:0; display:inline;" onsubmit="return confirm('確定要移除此成員嗎？此操作無法復原。');">
-          <input type="hidden" name="csrf" value="${escapeHtml(args.csrfToken)}" />
-          <input type="hidden" name="action" value="delete" />
-          <button class="btn btn--small btn--danger" type="submit">移除</button>
-        </form>
-      `;
+      // 管理员不能删除自己
+      const isCurrentUser = u.id === args.currentUserId;
+      const deleteBtn = isCurrentUser && u.role === "admin"
+        ? `<span class="muted">—</span>`
+        : `
+          <form method="post" action="/members/${escapeHtml(u.id)}" style="margin:0; display:inline;" onsubmit="return confirm('確定要移除此成員嗎？此操作無法復原。');">
+            <input type="hidden" name="csrf" value="${escapeHtml(args.csrfToken)}" />
+            <input type="hidden" name="action" value="delete" />
+            <button class="btn btn--small btn--danger" type="submit">移除</button>
+          </form>
+        `;
       return `
         <tr>
           <td><a href="/members/${escapeHtml(u.id)}"><strong>${escapeHtml(u.display_name)}</strong></a></td>
@@ -1415,17 +1425,31 @@ function renderMemberDetail(args: {
         : ""
     }
 
-    <h2>危險操作</h2>
-    <div class="card">
-      <div class="muted" style="margin-bottom: 10px;">
-        ${isSelf ? "移除自己的帳號後，您將被登出並無法再登入此帳號。" : canAdmin ? "移除此成員後，該成員將無法再登入系統。" : ""}
-      </div>
-      <form method="post" action="/members/${escapeHtml(member.id)}" onsubmit="return confirm('確定要移除此成員嗎？此操作無法復原。');">
-        <input type="hidden" name="csrf" value="${escapeHtml(csrfToken)}" />
-        <input type="hidden" name="action" value="delete" />
-        <button class="btn btn--danger" type="submit">${isSelf ? "移除我的帳號" : "移除成員"}</button>
-      </form>
-    </div>
+    ${
+      // 管理员不能删除自己，只有普通成员可以删除自己，或者管理员可以删除其他成员
+      !(canAdmin && isSelf) && (isSelf || canAdmin)
+        ? `
+          <h2>危險操作</h2>
+          <div class="card">
+            <div class="muted" style="margin-bottom: 10px;">
+              ${isSelf ? "移除自己的帳號後，您將被登出並無法再登入此帳號。" : canAdmin ? "移除此成員後，該成員將無法再登入系統。" : ""}
+            </div>
+            <form method="post" action="/members/${escapeHtml(member.id)}" onsubmit="return confirm('確定要移除此成員嗎？此操作無法復原。');">
+              <input type="hidden" name="csrf" value="${escapeHtml(csrfToken)}" />
+              <input type="hidden" name="action" value="delete" />
+              <button class="btn btn--danger" type="submit">${isSelf ? "移除我的帳號" : "移除成員"}</button>
+            </form>
+          </div>
+        `
+        : canAdmin && isSelf
+        ? `
+          <h2>危險操作</h2>
+          <div class="card">
+            <div class="muted">管理員不能移除自己的帳號。如需移除，請先將其他成員設為管理員，或由其他管理員執行移除操作。</div>
+          </div>
+        `
+        : ""
+    }
   `;
 }
 

@@ -107,25 +107,33 @@ async function verifyPassword(password: string, salt: string, expectedHash: stri
 
 async function countUsers(env: Env): Promise<number> {
   // #region agent log
-  fetch('http://127.0.0.1:7243/ingest/d767ce96-12cd-489a-a0f5-5a7461b6091e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.ts:108',message:'countUsers entry',data:{hasDB:!!env.DB,dbType:typeof env.DB},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+  const logCount1 = {location:'index.ts:108',message:'countUsers entry',data:{hasDB:!!env.DB,dbType:typeof env.DB},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'};
+  fetch('http://127.0.0.1:7243/ingest/d767ce96-12cd-489a-a0f5-5a7461b6091e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logCount1)}).catch(()=>{}); console.error('[DEBUG]', JSON.stringify(logCount1));
   // #endregion
   try {
     // #region agent log
-    fetch('http://127.0.0.1:7243/ingest/d767ce96-12cd-489a-a0f5-5a7461b6091e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.ts:111',message:'before DB.prepare',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+    const logCount2 = {location:'index.ts:111',message:'before DB.prepare',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'};
+    fetch('http://127.0.0.1:7243/ingest/d767ce96-12cd-489a-a0f5-5a7461b6091e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logCount2)}).catch(()=>{}); console.error('[DEBUG]', JSON.stringify(logCount2));
     // #endregion
     const row = (await env.DB.prepare("SELECT COUNT(*) as c FROM users").first()) as { c?: number } | null;
     // #region agent log
-    fetch('http://127.0.0.1:7243/ingest/d767ce96-12cd-489a-a0f5-5a7461b6091e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.ts:113',message:'after DB.prepare',data:{row,count:Number(row?.c ?? 0)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+    const logCount3 = {location:'index.ts:113',message:'after DB.prepare',data:{row,count:Number(row?.c ?? 0)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'};
+    fetch('http://127.0.0.1:7243/ingest/d767ce96-12cd-489a-a0f5-5a7461b6091e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logCount3)}).catch(()=>{}); console.error('[DEBUG]', JSON.stringify(logCount3));
     // #endregion
     return Number(row?.c ?? 0);
   } catch (err) {
     // #region agent log
-    fetch('http://127.0.0.1:7243/ingest/d767ce96-12cd-489a-a0f5-5a7461b6091e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.ts:116',message:'countUsers catch',data:{error:err instanceof Error?err.message:String(err),errorType:err?.constructor?.name},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+    const logCountErr = {location:'index.ts:121',message:'countUsers catch',data:{error:err instanceof Error?err.message:String(err),errorType:err?.constructor?.name,errString:String(err),errKeys:err?Object.keys(err):[]},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'};
+    fetch('http://127.0.0.1:7243/ingest/d767ce96-12cd-489a-a0f5-5a7461b6091e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logCountErr)}).catch(()=>{}); console.error('[DEBUG]', JSON.stringify(logCountErr));
     // #endregion
-    throw new HttpError(
-      500,
-      "資料庫尚未初始化（缺少 tables）。請先執行 `wrangler d1 migrations apply DB --local/--remote` 再重試。"
-    );
+    const errMsg = err instanceof Error ? err.message : String(err);
+    if (errMsg.includes('no such table') || errMsg.includes('does not exist') || errMsg.includes('no table named')) {
+      throw new HttpError(
+        500,
+        "資料庫尚未初始化（缺少 tables）。請先執行 `wrangler d1 migrations apply DB --remote` 再重試。"
+      );
+    }
+    throw new HttpError(500, `資料庫查詢錯誤：${errMsg}`);
   }
 }
 
@@ -1111,7 +1119,16 @@ export default {
       throw new HttpError(404, "找不到頁面");
     } catch (err) {
       if (err instanceof HttpError) {
-        const session = await getSession(env, request);
+        let session: AuthedSession | null = null;
+        try {
+          session = await getSession(env, request);
+        } catch (sessionErr) {
+          // #region agent log
+          const sessionErrLog = {location:'index.ts:1115',message:'getSession failed in error handler',data:{error:sessionErr instanceof Error?sessionErr.message:String(sessionErr)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'J'};
+          fetch('http://127.0.0.1:7243/ingest/d767ce96-12cd-489a-a0f5-5a7461b6091e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(sessionErrLog)}).catch(()=>{}); console.error('[DEBUG]', JSON.stringify(sessionErrLog));
+          // #endregion
+          // Ignore session errors in error handler
+        }
         const body = `
           <h1>${escapeHtml(String(err.status))}</h1>
           <div class="card">
@@ -1134,7 +1151,9 @@ export default {
         );
       }
       // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/d767ce96-12cd-489a-a0f5-5a7461b6091e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.ts:1034',message:'catch block - unhandled error',data:{error:err instanceof Error?err.message:String(err),errorType:err?.constructor?.name,stack:err instanceof Error?err.stack:undefined,pathname},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+      const catchLogData = {location:'index.ts:1112',message:'catch block - unhandled error',data:{error:err instanceof Error?err.message:String(err),errorType:err?.constructor?.name,stack:err instanceof Error?err.stack:undefined,pathname,isHttpError:err instanceof HttpError,errString:String(err),errKeys:err?Object.keys(err):[]},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'};
+      fetch('http://127.0.0.1:7243/ingest/d767ce96-12cd-489a-a0f5-5a7461b6091e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(catchLogData)}).catch(()=>{}); 
+      console.error('[DEBUG] CATCH BLOCK:', JSON.stringify(catchLogData));
       // #endregion
       return htmlResponse(
         renderLayout({
@@ -1143,6 +1162,7 @@ export default {
             <h1>500</h1>
             <div class="card">
               <div class="muted">發生未預期錯誤</div>
+              <div style="margin-top: 12px; font-size: 12px; color: rgba(255,255,255,0.5);">${escapeHtml(err instanceof Error ? err.message : String(err))}</div>
               <div style="margin-top: 12px"><a class="btn btn--primary" href="/">回首頁</a></div>
             </div>
           `,

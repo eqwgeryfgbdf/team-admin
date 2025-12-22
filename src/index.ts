@@ -2,7 +2,7 @@ import { escapeHtml, renderLayout, type LayoutUser } from "./renderHtml";
 
 const SESSION_COOKIE_NAME = "__Host-teamadmin_session";
 const SESSION_TTL_DAYS = 30;
-const PBKDF2_ITERATIONS = 310_000;
+const PBKDF2_ITERATIONS = 100_000; // Cloudflare Workers Web Crypto API limit is 100,000
 
 type AuthedSession = {
   sessionId: string;

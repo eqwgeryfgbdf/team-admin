@@ -15,7 +15,6 @@ export type LayoutOptions = {
 
 export function escapeHtml(input: string): string {
   if (!input) return "";
-  // 快速检查是否包含需要转义的字符，避免不必要的处理
   if (!/[&<>"']/.test(input)) return input;
   return input
     .replaceAll("&", "&amp;")
@@ -28,15 +27,25 @@ export function escapeHtml(input: string): string {
 function renderNav(user: LayoutUser, csrfToken: string) {
   return `
     <nav class="nav">
-      <div class="nav__brand">Team Admin</div>
-      <a class="nav__link" href="/app">儀表板</a>
-      <a class="nav__link" href="/events">活動</a>
-      ${user.role === "admin" ? `<a class="nav__link" href="/members">成員</a>` : ""}
-      <a class="nav__link" href="/profile">個人資料</a>
-      <form class="nav__logout" method="post" action="/logout">
-        <input type="hidden" name="csrf" value="${escapeHtml(csrfToken)}">
-        <button class="btn btn--ghost" type="submit">登出</button>
-      </form>
+      <div class="nav__left">
+        <div class="nav__brand">Team Admin</div>
+        <div class="nav__links">
+          <a class="nav__link" href="/app">儀表板</a>
+          <a class="nav__link" href="/events">活動</a>
+          ${user.role === "admin" ? `<a class="nav__link" href="/members">成員</a>` : ""}
+          <a class="nav__link" href="/profile">個人資料</a>
+        </div>
+      </div>
+      <div class="nav__right">
+        <button id="theme-toggle" class="btn btn--icon" aria-label="切換主題">
+            <svg class="icon-sun" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+            <svg class="icon-moon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+        </button>
+        <form class="nav__logout" method="post" action="/logout">
+          <input type="hidden" name="csrf" value="${escapeHtml(csrfToken)}">
+          <button class="btn btn--ghost" type="submit">登出</button>
+        </form>
+      </div>
     </nav>
   `;
 }
@@ -57,267 +66,416 @@ export function renderLayout(opts: LayoutOptions): string {
       <meta charset="UTF-8" />
       <meta name="viewport" content="width=device-width, initial-scale=1.0" />
       <title>${escapeHtml(title)} · Team Admin</title>
+      <script>
+        // 立即執行主題檢查，避免閃爍
+        (function() {
+          try {
+            var localTheme = localStorage.getItem('theme');
+            var supportDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
+            if (localTheme === 'dark' || (!localTheme && supportDarkMode)) {
+              document.documentElement.setAttribute('data-theme', 'dark');
+            } else {
+              document.documentElement.setAttribute('data-theme', 'light');
+            }
+          } catch (e) {}
+        })();
+      </script>
       <style>
         :root {
-          --bg: #0b1020;
-          --panel: rgba(255,255,255,0.06);
-          --panel2: rgba(255,255,255,0.09);
-          --text: rgba(255,255,255,0.92);
-          --muted: rgba(255,255,255,0.7);
-          --line: rgba(255,255,255,0.12);
-          --accent: #7c3aed;
-          --accent2: #22c55e;
+          /* 色彩系統 - 淺色模式 (預設) */
+          --bg-primary: #ffffff;
+          --bg-secondary: #f8fafc;
+          --text-primary: #1e293b;
+          --text-secondary: #64748b;
+          --text-muted: #94a3b8;
+          --accent: #06b6d4; /* 水藍色 */
+          --accent-hover: #0891b2;
+          --accent-light: rgba(6, 182, 212, 0.1);
+          --border: #e2e8f0;
+          --nav-bg: rgba(255, 255, 255, 0.85);
+          --card-bg: rgba(255, 255, 255, 0.7);
+          --glass-border: rgba(255, 255, 255, 0.6);
+          --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+          --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+          --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+          --glow: none;
+          
+          /* 功能色 */
           --danger: #ef4444;
+          --danger-bg: rgba(239, 68, 68, 0.1);
+          --success: #22c55e;
+          --success-bg: rgba(34, 197, 94, 0.1);
           --warning: #f59e0b;
-          --shadow: 0 12px 32px rgba(0,0,0,0.35);
-          --radius: 14px;
-          --radius2: 10px;
-          --font: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji",
-            "Segoe UI Emoji";
+          --warning-bg: rgba(245, 158, 11, 0.1);
+
+          /* 變數 */
+          --radius-lg: 20px;
+          --radius-md: 14px;
+          --radius-sm: 8px;
+          --radius-btn: 9999px; /* 圓角按鈕 */
+          --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+          --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
+
+        /* 深色模式覆寫 */
+        html[data-theme="dark"] {
+          --bg-primary: #0b1020; /* 深藍色 */
+          --bg-secondary: #111827;
+          --text-primary: #f8fafc;
+          --text-secondary: #cbd5e1;
+          --text-muted: #64748b;
+          --accent: #8b5cf6; /* 紫色 */
+          --accent-hover: #7c3aed;
+          --accent-light: rgba(139, 92, 246, 0.15);
+          --border: rgba(255, 255, 255, 0.08);
+          --nav-bg: rgba(11, 16, 32, 0.85);
+          --card-bg: rgba(17, 24, 39, 0.6);
+          --glass-border: rgba(255, 255, 255, 0.08);
+          --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+          --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4);
+          --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+          --glow: 0 0 15px rgba(139, 92, 246, 0.5); /* 霓虹效果 */
+        }
+
         * { box-sizing: border-box; }
+        
         body {
           margin: 0;
-          font-family: var(--font);
-          color: var(--text);
-          background: radial-gradient(1200px 800px at 20% 10%, rgba(124,58,237,0.22), transparent 55%),
-            radial-gradient(900px 700px at 90% 10%, rgba(34,197,94,0.18), transparent 50%),
-            radial-gradient(900px 700px at 60% 90%, rgba(59,130,246,0.12), transparent 55%),
-            var(--bg);
+          font-family: var(--font-sans);
+          color: var(--text-primary);
+          background-color: var(--bg-primary);
+          transition: background-color 0.5s ease, color 0.5s ease;
           min-height: 100vh;
+          overflow-x: hidden;
+          
+          /* 背景動畫效果 */
+          background-image: 
+            radial-gradient(circle at 15% 15%, var(--accent-light) 0%, transparent 40%),
+            radial-gradient(circle at 85% 85%, rgba(6, 182, 212, 0.1) 0%, transparent 40%);
+          background-attachment: fixed;
         }
-        a { color: inherit; text-decoration: none; }
-        .container { max-width: 1060px; margin: 0 auto; padding: 18px 16px 54px; }
+
+        html[data-theme="dark"] body {
+          background-image: 
+            radial-gradient(circle at 20% 20%, rgba(139, 92, 246, 0.2) 0%, transparent 50%),
+            radial-gradient(circle at 80% 80%, rgba(6, 182, 212, 0.15) 0%, transparent 50%);
+        }
+
+        a { color: inherit; text-decoration: none; transition: var(--transition); }
+        
+        /* 佈局容器 */
+        .container { 
+          max-width: 1200px; 
+          margin: 0 auto; 
+          padding: 32px 24px 64px; 
+          animation: slideUp 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        /* 導航列 */
         .nav {
           position: sticky; top: 0;
-          display: flex; gap: 14px; align-items: center;
-          padding: 12px 16px;
-          border-bottom: 1px solid var(--line);
-          background: rgba(10,14,28,0.8);
-          backdrop-filter: blur(10px);
-          z-index: 10;
+          display: flex; justify-content: space-between; align-items: center;
+          padding: 16px 24px;
+          border-bottom: 1px solid var(--border);
+          background: var(--nav-bg);
+          backdrop-filter: blur(16px);
+          -webkit-backdrop-filter: blur(16px);
+          z-index: 50;
+          transition: all 0.3s ease;
         }
-        .nav__brand { font-weight: 700; letter-spacing: 0.4px; margin-right: 6px; }
+        
+        .nav__left { display: flex; align-items: center; gap: 32px; }
+        .nav__right { display: flex; align-items: center; gap: 16px; }
+
+        .nav__brand { 
+          font-weight: 800; 
+          font-size: 1.25rem;
+          letter-spacing: -0.025em; 
+          background: linear-gradient(135deg, var(--accent), #06b6d4);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+        }
+        html[data-theme="dark"] .nav__brand {
+          background: linear-gradient(135deg, var(--accent), #c084fc);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+        }
+
+        .nav__links { display: flex; gap: 8px; }
+
         .nav__link { 
-          color: var(--muted); 
-          padding: 8px 10px; 
-          border-radius: 10px;
-          transition: color 0.15s ease, background-color 0.15s ease;
+          color: var(--text-secondary); 
+          padding: 8px 16px; 
+          border-radius: var(--radius-btn);
+          font-size: 0.95rem;
+          font-weight: 500;
         }
-        .nav__link:hover { color: var(--text); background: rgba(255,255,255,0.06); }
-        .nav__logout { margin-left: auto; }
-        h1 { font-size: 28px; margin: 16px 0 10px; }
-        h2 { font-size: 18px; margin: 18px 0 10px; color: var(--text); }
-        .muted { color: var(--muted); }
-        .grid { display: grid; gap: 14px; }
-        .grid--2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-        @media (max-width: 880px) { .grid--2 { grid-template-columns: 1fr; } }
+        
+        .nav__link:hover { 
+          color: var(--text-primary); 
+          background: var(--bg-secondary);
+        }
+
+        .nav__logout { display: flex; }
+
+        /* 排版 */
+        h1 { font-size: 2rem; font-weight: 800; margin: 0 0 24px; letter-spacing: -0.025em; }
+        h2 { font-size: 1.25rem; font-weight: 600; margin: 32px 0 16px; color: var(--text-primary); display: flex; align-items: center; gap: 8px; }
+        .muted { color: var(--text-muted); }
+        
+        /* 網格系統 */
+        .grid { display: grid; gap: 24px; }
+        .grid--2 { grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); }
+        
+        /* 卡片 */
         .card {
-          border: 1px solid var(--line);
-          background: linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.04));
-          border-radius: var(--radius);
-          box-shadow: var(--shadow);
-          padding: 14px 14px;
-          contain: layout style paint;
+          border: 1px solid var(--border);
+          background: var(--card-bg);
+          border-radius: var(--radius-lg);
+          box-shadow: var(--shadow-sm);
+          padding: 24px;
+          backdrop-filter: blur(12px);
+          transition: transform 0.3s ease, box-shadow 0.3s ease, border-color 0.3s ease;
         }
-        .card__title { font-weight: 700; margin-bottom: 10px; }
-        .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+        
+        .card:hover {
+          transform: translateY(-4px);
+          box-shadow: var(--shadow-lg);
+          border-color: var(--accent);
+        }
+        
+        html[data-theme="dark"] .card:hover {
+          box-shadow: var(--glow);
+        }
+
+        .card__title { font-size: 1.1rem; font-weight: 700; margin-bottom: 16px; color: var(--text-primary); }
+
+        /* 元件通用 */
+        .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
         .spacer { flex: 1; }
-        .flash { margin: 14px 0; padding: 12px 12px; border-radius: var(--radius2); border: 1px solid var(--line); }
-        .flash--info { background: rgba(59,130,246,0.12); }
-        .flash--success { background: rgba(34,197,94,0.12); }
-        .flash--error { background: rgba(239,68,68,0.12); }
+        
+        /* Flash 訊息 */
+        .flash { 
+          margin-bottom: 24px; padding: 16px; 
+          border-radius: var(--radius-md); 
+          border: 1px solid transparent; 
+          display: flex; align-items: center;
+          font-weight: 500;
+          animation: slideDown 0.4s ease-out;
+        }
+        .flash--info { background: rgba(59,130,246,0.1); color: #3b82f6; border-color: rgba(59,130,246,0.2); }
+        .flash--success { background: rgba(34,197,94,0.1); color: #22c55e; border-color: rgba(34,197,94,0.2); }
+        .flash--error { background: rgba(239,68,68,0.1); color: #ef4444; border-color: rgba(239,68,68,0.2); }
+
+        /* 按鈕 */
         .btn {
           display: inline-flex; align-items: center; justify-content: center;
           gap: 8px;
-          padding: 9px 12px;
-          border-radius: 12px;
-          border: 1px solid rgba(255,255,255,0.16);
-          background: rgba(255,255,255,0.08);
-          color: var(--text);
+          padding: 10px 20px;
+          border-radius: var(--radius-btn);
+          border: 1px solid transparent;
+          font-weight: 600;
+          font-size: 0.95rem;
           cursor: pointer;
+          transition: all 0.2s ease;
+          position: relative;
+          overflow: hidden;
         }
-        .btn { 
-          transition: background-color 0.15s ease, border-color 0.15s ease;
+        
+        .btn:active { transform: scale(0.97); }
+        
+        .btn--primary { 
+          background: var(--accent); 
+          color: white; 
+          box-shadow: 0 4px 12px rgba(6, 182, 212, 0.3);
         }
-        .btn:hover { background: rgba(255,255,255,0.12); }
-        .btn--primary { background: rgba(124,58,237,0.22); border-color: rgba(124,58,237,0.55); }
-        .btn--primary:hover { background: rgba(124,58,237,0.28); }
-        .btn--danger { background: rgba(239,68,68,0.18); border-color: rgba(239,68,68,0.55); }
-        .btn--ghost { background: transparent; }
-        .btn--small { padding: 6px 10px; border-radius: 10px; font-size: 13px; }
-        label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+        html[data-theme="dark"] .btn--primary {
+          box-shadow: 0 4px 12px rgba(139, 92, 246, 0.4);
+        }
+        
+        .btn--primary:hover { 
+          background: var(--accent-hover); 
+          transform: translateY(-1px);
+          box-shadow: 0 6px 16px rgba(6, 182, 212, 0.4);
+        }
+        html[data-theme="dark"] .btn--primary:hover {
+          box-shadow: 0 0 20px rgba(139, 92, 246, 0.6);
+        }
+
+        .btn--danger { 
+          background: var(--danger-bg); 
+          color: var(--danger); 
+          border-color: transparent;
+        }
+        .btn--danger:hover { 
+          background: rgba(239, 68, 68, 0.2); 
+        }
+
+        .btn--ghost { 
+          background: transparent; 
+          color: var(--text-secondary); 
+          padding: 8px 16px;
+        }
+        .btn--ghost:hover { 
+          background: var(--bg-secondary); 
+          color: var(--text-primary); 
+        }
+
+        .btn--small { padding: 6px 12px; font-size: 0.85rem; }
+        
+        .btn--icon {
+          padding: 8px;
+          border-radius: 50%;
+          color: var(--text-secondary);
+          background: transparent;
+        }
+        .btn--icon:hover {
+          background: var(--bg-secondary);
+          color: var(--text-primary);
+        }
+
+        /* 表單 */
+        label { display: block; font-size: 0.9rem; font-weight: 500; color: var(--text-secondary); margin-bottom: 8px; }
+        
         input, textarea, select {
           width: 100%;
-          padding: 10px 11px;
-          border-radius: 12px;
-          border: 1px solid rgba(255,255,255,0.18);
-          background: rgba(5,7,16,0.55);
-          color: var(--text);
+          padding: 12px 16px;
+          border-radius: var(--radius-md);
+          border: 2px solid var(--border);
+          background: var(--bg-primary);
+          color: var(--text-primary);
+          font-size: 1rem;
+          transition: all 0.2s ease;
           outline: none;
         }
+        
         input:focus, textarea:focus, select:focus { 
-          border-color: rgba(124,58,237,0.7); 
-          box-shadow: 0 0 0 3px rgba(124,58,237,0.18); 
+          border-color: var(--accent);
+          box-shadow: 0 0 0 4px var(--accent-light);
         }
-        textarea { min-height: 90px; resize: vertical; }
-        .date-input-wrapper { 
-          position: relative; 
-          display: flex; 
-          align-items: center;
-          contain: layout;
-        }
-        .date-input-wrapper input[type="date"] { 
-          padding-right: 40px; 
-          cursor: pointer;
-        }
+        
+        textarea { min-height: 120px; resize: vertical; line-height: 1.6; }
+        
+        .date-input-wrapper { position: relative; display: flex; align-items: center; }
+        .date-input-wrapper input[type="date"] { padding-right: 44px; cursor: pointer; }
         .date-input-wrapper input[type="date"]::-webkit-calendar-picker-indicator {
-          position: absolute;
-          right: 8px;
-          cursor: pointer;
-          opacity: 0.7;
-          filter: invert(1);
-          width: 20px;
-          height: 20px;
-          transition: opacity 0.15s ease;
-        }
-        .date-input-wrapper input[type="date"]::-webkit-calendar-picker-indicator:hover {
-          opacity: 1;
+          position: absolute; right: 12px; cursor: pointer; opacity: 0; width: 24px; height: 24px; z-index: 2;
         }
         .date-icon-btn {
-          position: absolute;
-          right: 8px;
-          background: transparent;
-          border: none;
-          color: var(--muted);
-          cursor: pointer;
-          padding: 4px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          z-index: 1;
-          transition: color 0.15s ease;
+          position: absolute; right: 12px; background: transparent; border: none; 
+          color: var(--text-muted); padding: 4px; pointer-events: none;
+          transition: color 0.2s;
         }
-        .date-icon-btn:hover { color: var(--text); }
-        .date-icon-btn svg { 
-          width: 18px; 
-          height: 18px; 
-          pointer-events: none;
+        .date-input-wrapper:hover .date-icon-btn { color: var(--accent); }
+        
+        .form { display: grid; gap: 20px; }
+        .form__actions { display: flex; gap: 12px; justify-content: flex-end; align-items: center; margin-top: 8px; }
+
+        /* 表格 */
+        table { width: 100%; border-collapse: separate; border-spacing: 0; border-radius: var(--radius-lg); border: 1px solid var(--border); overflow: hidden; }
+        
+        th, td { text-align: left; padding: 16px; border-bottom: 1px solid var(--border); }
+        
+        th { 
+          color: var(--text-muted); 
+          font-size: 0.8rem; 
+          font-weight: 600; 
+          text-transform: uppercase; 
+          letter-spacing: 0.05em; 
+          background: var(--bg-secondary); 
         }
-        .form { display: grid; gap: 12px; }
-        .form__actions { display: flex; gap: 10px; justify-content: flex-end; align-items: center; flex-wrap: wrap; }
-        table { width: 100%; border-collapse: collapse; overflow: hidden; border-radius: 12px; border: 1px solid var(--line); }
-        th, td { text-align: left; padding: 10px 10px; border-bottom: 1px solid rgba(255,255,255,0.08); vertical-align: top; }
-        th { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; background: rgba(255,255,255,0.04); }
-        tr { transition: background-color 0.15s ease; }
-        tr:hover td { background: rgba(255,255,255,0.03); }
-        code.inline { background: rgba(255,255,255,0.08); padding: 2px 6px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.12); }
-        .pill { display: inline-flex; align-items: center; padding: 4px 9px; border-radius: 999px; font-size: 12px; border: 1px solid rgba(255,255,255,0.14); color: var(--muted); }
-        .pill--green { color: rgba(34,197,94,0.95); border-color: rgba(34,197,94,0.35); background: rgba(34,197,94,0.10); }
-        .pill--purple { color: rgba(167,139,250,0.95); border-color: rgba(124,58,237,0.40); background: rgba(124,58,237,0.12); }
-        .pill--yellow { color: rgba(245,158,11,0.95); border-color: rgba(245,158,11,0.35); background: rgba(245,158,11,0.10); }
-        .pill--red { color: rgba(248,113,113,0.95); border-color: rgba(239,68,68,0.35); background: rgba(239,68,68,0.10); }
+        
+        tr:last-child td { border-bottom: none; }
+        tr:hover td { background: var(--bg-secondary); }
+
+        /* 標籤 Pill */
+        .pill { 
+          display: inline-flex; align-items: center; padding: 4px 12px; 
+          border-radius: 999px; font-size: 0.85rem; font-weight: 500;
+        }
+        .pill--green { color: #15803d; background: #dcfce7; }
+        .pill--purple { color: #7e22ce; background: #f3e8ff; }
+        .pill--yellow { color: #b45309; background: #fef3c7; }
+        .pill--red { color: #b91c1c; background: #fee2e2; }
+
+        html[data-theme="dark"] .pill--green { color: #4ade80; background: rgba(34, 197, 94, 0.2); }
+        html[data-theme="dark"] .pill--purple { color: #a78bfa; background: rgba(139, 92, 246, 0.2); }
+        html[data-theme="dark"] .pill--yellow { color: #fbbf24; background: rgba(245, 158, 11, 0.2); }
+        html[data-theme="dark"] .pill--red { color: #f87171; background: rgba(239, 68, 68, 0.2); }
+
+        code.inline { 
+          background: var(--bg-secondary); 
+          padding: 2px 6px; 
+          border-radius: 6px; 
+          font-family: monospace; 
+          font-size: 0.9em; 
+          color: var(--accent);
+        }
+
+        /* 主題切換按鈕圖示 */
+        .icon-moon { display: none; }
+        html[data-theme="dark"] .icon-sun { display: none; }
+        html[data-theme="dark"] .icon-moon { display: block; }
+
+        /* 動畫 Keyframes */
+        @keyframes slideUp {
+          from { opacity: 0; transform: translateY(20px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes slideDown {
+          from { opacity: 0; transform: translateY(-20px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* 響應式 */
+        @media (max-width: 768px) {
+          .nav { padding: 12px 16px; }
+          .container { padding: 20px 16px 48px; }
+          .nav__brand { font-size: 1.1rem; }
+          .nav__link { padding: 6px 10px; font-size: 0.9rem; }
+          .nav__links { display: none; } /* 手機版可能需要漢堡選單，暫時隱藏文字連結或保持簡約 */
+          .nav__left { gap: 16px; }
+          
+          /* 簡單的手機版適配：在手機上顯示連結但縮小間距 */
+          .nav__links { display: flex; gap: 4px; }
+          .nav__link { padding: 6px 8px; font-size: 0.85rem; }
+        }
       </style>
       <script>
-        // 改善日期输入的用户体验 - 使用事件委托优化性能
-        (function() {
-          'use strict';
-          
-          // 缓存日期格式化选项，避免重复创建
-          const dateFormatOptions = { 
-            year: 'numeric', 
-            month: '2-digit', 
-            day: '2-digit' 
-          };
-          
-          // 日期格式化函数（复用）
-          function formatDate(value) {
-            if (!value) return '';
-            try {
-              const date = new Date(value + 'T00:00:00');
-              return date.toLocaleDateString('zh-TW', dateFormatOptions);
-            } catch (e) {
-              return '';
+        document.addEventListener('DOMContentLoaded', () => {
+          // 日期輸入優化 (保留原有邏輯)
+          (function() {
+            const dateFormatOptions = { year: 'numeric', month: '2-digit', day: '2-digit' };
+            function formatDate(value) {
+              if (!value) return '';
+              try { return new Date(value + 'T00:00:00').toLocaleDateString('zh-TW', dateFormatOptions); } 
+              catch (e) { return ''; }
             }
-          }
-          
-          // 更新单个输入框的 title
-          function updateInputTitle(input) {
-            input.title = formatDate(input.value);
-          }
-          
-          // 打开日期选择器
-          function openDatePicker(input) {
-            if (typeof input.showPicker === 'function') {
-              try {
-                input.showPicker();
-              } catch (e) {
-                // 某些情况下 showPicker 可能失败，回退到 focus
-                input.focus();
-              }
-            } else {
-              input.focus();
-            }
-          }
-          
-          // 使用事件委托优化性能
-          function init() {
+            function updateInputTitle(input) { input.title = formatDate(input.value); }
+            
             const dateInputs = document.querySelectorAll('input[type="date"]');
-            const len = dateInputs.length;
+            dateInputs.forEach(input => updateInputTitle(input));
             
-            // 批量初始化 title
-            for (let i = 0; i < len; i++) {
-              updateInputTitle(dateInputs[i]);
-            }
-            
-            // 使用事件委托处理所有日期输入框的事件
-            document.addEventListener('click', function(e) {
-              const target = e.target;
-              if (target && target.type === 'date') {
-                if (typeof target.showPicker === 'function') {
-                  e.preventDefault();
-                  openDatePicker(target);
-                }
-              }
-            }, true); // 使用捕获阶段提高性能
-            
-            // 处理 focus 事件（Tab 键导航）
-            let focusTimer = null;
-            document.addEventListener('focus', function(e) {
-              const target = e.target;
-              if (target && target.type === 'date') {
-                clearTimeout(focusTimer);
-                focusTimer = setTimeout(function() {
-                  if (document.activeElement === target) {
-                    openDatePicker(target);
-                  }
-                }, 100);
-              }
-            }, true);
-            
-            // 批量处理 change 和 input 事件
-            document.addEventListener('change', function(e) {
-              const target = e.target;
-              if (target && target.type === 'date') {
-                updateInputTitle(target);
-              }
-            }, true);
-            
-            document.addEventListener('input', function(e) {
-              const target = e.target;
-              if (target && target.type === 'date') {
-                updateInputTitle(target);
-              }
-            }, true);
+            document.addEventListener('change', e => {
+              if (e.target && e.target.type === 'date') updateInputTitle(e.target);
+            });
+          })();
+
+          // 主題切換邏輯
+          const themeToggle = document.getElementById('theme-toggle');
+          if (themeToggle) {
+            themeToggle.addEventListener('click', () => {
+              const currentTheme = document.documentElement.getAttribute('data-theme');
+              const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+              
+              document.documentElement.setAttribute('data-theme', newTheme);
+              localStorage.setItem('theme', newTheme);
+              
+              // 添加切換動畫效果
+              document.body.style.transition = 'background-color 0.5s ease, color 0.5s ease';
+            });
           }
-          
-          // 如果 DOM 已加载，立即执行；否则等待 DOMContentLoaded
-          if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', init);
-          } else {
-            init();
-          }
-        })();
+        });
       </script>
     </head>
     <body>
@@ -329,4 +487,3 @@ export function renderLayout(opts: LayoutOptions): string {
     </body>
   </html>`;
 }
-

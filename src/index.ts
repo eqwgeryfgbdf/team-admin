@@ -106,10 +106,22 @@ async function verifyPassword(password: string, salt: string, expectedHash: stri
 }
 
 async function countUsers(env: Env): Promise<number> {
+  // #region agent log
+  fetch('http://127.0.0.1:7243/ingest/d767ce96-12cd-489a-a0f5-5a7461b6091e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.ts:108',message:'countUsers entry',data:{hasDB:!!env.DB,dbType:typeof env.DB},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+  // #endregion
   try {
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/d767ce96-12cd-489a-a0f5-5a7461b6091e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.ts:111',message:'before DB.prepare',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+    // #endregion
     const row = (await env.DB.prepare("SELECT COUNT(*) as c FROM users").first()) as { c?: number } | null;
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/d767ce96-12cd-489a-a0f5-5a7461b6091e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.ts:113',message:'after DB.prepare',data:{row,count:Number(row?.c ?? 0)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+    // #endregion
     return Number(row?.c ?? 0);
-  } catch {
+  } catch (err) {
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/d767ce96-12cd-489a-a0f5-5a7461b6091e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.ts:116',message:'countUsers catch',data:{error:err instanceof Error?err.message:String(err),errorType:err?.constructor?.name},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+    // #endregion
     throw new HttpError(
       500,
       "資料庫尚未初始化（缺少 tables）。請先執行 `wrangler d1 migrations apply DB --local/--remote` 再重試。"
@@ -271,14 +283,28 @@ export default {
     try {
       // Bootstrap: allow /setup only if no users exist
       if (pathname === "/setup" && request.method === "GET") {
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/d767ce96-12cd-489a-a0f5-5a7461b6091e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.ts:273',message:'/setup GET entry',data:{hasEnv:!!env,hasDB:!!env?.DB,dbType:typeof env?.DB},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+        // #endregion
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/d767ce96-12cd-489a-a0f5-5a7461b6091e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.ts:274',message:'before countUsers',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+        // #endregion
         const existing = await countUsers(env);
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/d767ce96-12cd-489a-a0f5-5a7461b6091e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.ts:275',message:'after countUsers',data:{existing},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+        // #endregion
         if (existing > 0) return redirect("/login");
-        return htmlResponse(
-          renderLayout({
-            title: "初始化管理員",
-            body: renderSetupForm(),
-          })
-        );
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/d767ce96-12cd-489a-a0f5-5a7461b6091e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.ts:276',message:'before renderLayout',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+        // #endregion
+        const html = renderLayout({
+          title: "初始化管理員",
+          body: renderSetupForm(),
+        });
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/d767ce96-12cd-489a-a0f5-5a7461b6091e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.ts:280',message:'after renderLayout',data:{htmlLength:html?.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+        // #endregion
+        return htmlResponse(html);
       }
 
       if (pathname === "/setup" && request.method === "POST") {
@@ -1031,6 +1057,9 @@ export default {
           { status: err.status }
         );
       }
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/d767ce96-12cd-489a-a0f5-5a7461b6091e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.ts:1034',message:'catch block - unhandled error',data:{error:err instanceof Error?err.message:String(err),errorType:err?.constructor?.name,stack:err instanceof Error?err.stack:undefined,pathname},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+      // #endregion
       return htmlResponse(
         renderLayout({
           title: "伺服器錯誤",

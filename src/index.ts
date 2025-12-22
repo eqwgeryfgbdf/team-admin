@@ -189,15 +189,27 @@ async function getSession(env: Env, request: Request): Promise<AuthedSession | n
 }
 
 async function createSession(env: Env, userId: string): Promise<{ sessionId: string; csrfToken: string }> {
+  // #region agent log
+  const logData12 = {location:'index.ts:179',message:'createSession entry',data:{userId,hasDB:!!env.DB},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'I'};
+  fetch('http://127.0.0.1:7243/ingest/d767ce96-12cd-489a-a0f5-5a7461b6091e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logData12)}).catch(()=>{}); console.error('[DEBUG]', JSON.stringify(logData12));
+  // #endregion
   const sessionId = crypto.randomUUID();
   const csrfToken = base64UrlFromBytes(crypto.getRandomValues(new Uint8Array(32)));
   const ts = nowMs();
   const expiresAt = ts + SESSION_TTL_DAYS * 24 * 60 * 60 * 1000;
+  // #region agent log
+  const logData13 = {location:'index.ts:185',message:'before DB INSERT sessions',data:{sessionId,userId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'I'};
+  fetch('http://127.0.0.1:7243/ingest/d767ce96-12cd-489a-a0f5-5a7461b6091e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logData13)}).catch(()=>{}); console.error('[DEBUG]', JSON.stringify(logData13));
+  // #endregion
   await env.DB.prepare(
     "INSERT INTO sessions (id, user_id, csrf_token, created_at, last_seen_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)"
   )
     .bind(sessionId, userId, csrfToken, ts, ts, expiresAt)
     .run();
+  // #region agent log
+  const logData14 = {location:'index.ts:189',message:'after DB INSERT sessions',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'I'};
+  fetch('http://127.0.0.1:7243/ingest/d767ce96-12cd-489a-a0f5-5a7461b6091e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logData14)}).catch(()=>{}); console.error('[DEBUG]', JSON.stringify(logData14));
+  // #endregion
   return { sessionId, csrfToken };
 }
 
@@ -308,10 +320,30 @@ export default {
       }
 
       if (pathname === "/setup" && request.method === "POST") {
+        // #region agent log
+        const logData1 = {location:'index.ts:310',message:'/setup POST entry',data:{hasEnv:!!env,hasDB:!!env?.DB,dbType:typeof env?.DB},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'};
+        fetch('http://127.0.0.1:7243/ingest/d767ce96-12cd-489a-a0f5-5a7461b6091e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logData1)}).catch(()=>{}); console.error('[DEBUG]', JSON.stringify(logData1));
+        // #endregion
+        // #region agent log
+        const logData2 = {location:'index.ts:311',message:'before countUsers POST',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'};
+        fetch('http://127.0.0.1:7243/ingest/d767ce96-12cd-489a-a0f5-5a7461b6091e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logData2)}).catch(()=>{}); console.error('[DEBUG]', JSON.stringify(logData2));
+        // #endregion
         const existing = await countUsers(env);
+        // #region agent log
+        const logData3 = {location:'index.ts:312',message:'after countUsers POST',data:{existing},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'};
+        fetch('http://127.0.0.1:7243/ingest/d767ce96-12cd-489a-a0f5-5a7461b6091e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logData3)}).catch(()=>{}); console.error('[DEBUG]', JSON.stringify(logData3));
+        // #endregion
         if (existing > 0) return redirect("/login");
 
+        // #region agent log
+        const logData4 = {location:'index.ts:314',message:'before readForm',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'};
+        fetch('http://127.0.0.1:7243/ingest/d767ce96-12cd-489a-a0f5-5a7461b6091e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logData4)}).catch(()=>{}); console.error('[DEBUG]', JSON.stringify(logData4));
+        // #endregion
         const form = await readForm(request);
+        // #region agent log
+        const logData5 = {location:'index.ts:315',message:'after readForm',data:{hasForm:!!form},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'};
+        fetch('http://127.0.0.1:7243/ingest/d767ce96-12cd-489a-a0f5-5a7461b6091e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logData5)}).catch(()=>{}); console.error('[DEBUG]', JSON.stringify(logData5));
+        // #endregion
         const email = normalizeEmail(getString(form, "email"));
         const displayName = getString(form, "display_name") || "Admin";
         const password = getString(form, "password");
@@ -321,17 +353,41 @@ export default {
         if (password.length < 8) throw new HttpError(400, "密碼至少 8 碼");
         if (password !== password2) throw new HttpError(400, "兩次輸入的密碼不一致");
 
+        // #region agent log
+        const logData6 = {location:'index.ts:324',message:'before hashPasswordNewSalt',data:{passwordLength:password.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'G'};
+        fetch('http://127.0.0.1:7243/ingest/d767ce96-12cd-489a-a0f5-5a7461b6091e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logData6)}).catch(()=>{}); console.error('[DEBUG]', JSON.stringify(logData6));
+        // #endregion
         const { salt, hash } = await hashPasswordNewSalt(password);
+        // #region agent log
+        const logData7 = {location:'index.ts:325',message:'after hashPasswordNewSalt',data:{hasSalt:!!salt,hasHash:!!hash},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'G'};
+        fetch('http://127.0.0.1:7243/ingest/d767ce96-12cd-489a-a0f5-5a7461b6091e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logData7)}).catch(()=>{}); console.error('[DEBUG]', JSON.stringify(logData7));
+        // #endregion
         const userId = crypto.randomUUID();
         const ts = nowMs();
+        // #region agent log
+        const logData8 = {location:'index.ts:327',message:'before DB INSERT users',data:{userId,email,hasDB:!!env.DB},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H'};
+        fetch('http://127.0.0.1:7243/ingest/d767ce96-12cd-489a-a0f5-5a7461b6091e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logData8)}).catch(()=>{}); console.error('[DEBUG]', JSON.stringify(logData8));
+        // #endregion
         await env.DB.prepare(
           `INSERT INTO users (id, email, password_hash, password_salt, role, display_name, created_at)
            VALUES (?, ?, ?, ?, 'admin', ?, ?)`
         )
           .bind(userId, email, hash, salt, displayName, ts)
           .run();
+        // #region agent log
+        const logData9 = {location:'index.ts:332',message:'after DB INSERT users',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H'};
+        fetch('http://127.0.0.1:7243/ingest/d767ce96-12cd-489a-a0f5-5a7461b6091e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logData9)}).catch(()=>{}); console.error('[DEBUG]', JSON.stringify(logData9));
+        // #endregion
 
+        // #region agent log
+        const logData10 = {location:'index.ts:334',message:'before createSession',data:{userId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'I'};
+        fetch('http://127.0.0.1:7243/ingest/d767ce96-12cd-489a-a0f5-5a7461b6091e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logData10)}).catch(()=>{}); console.error('[DEBUG]', JSON.stringify(logData10));
+        // #endregion
         const { sessionId, csrfToken } = await createSession(env, userId);
+        // #region agent log
+        const logData11 = {location:'index.ts:335',message:'after createSession',data:{hasSessionId:!!sessionId,hasCsrfToken:!!csrfToken},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'I'};
+        fetch('http://127.0.0.1:7243/ingest/d767ce96-12cd-489a-a0f5-5a7461b6091e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logData11)}).catch(()=>{}); console.error('[DEBUG]', JSON.stringify(logData11));
+        // #endregion
         const headers = new Headers();
         headers.append("set-cookie", setCookieHeader(SESSION_COOKIE_NAME, sessionId, { maxAgeSeconds: 60 * 60 * 24 * SESSION_TTL_DAYS }));
         headers.set("location", "/app");

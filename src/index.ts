@@ -106,31 +106,15 @@ async function verifyPassword(password: string, salt: string, expectedHash: stri
 }
 
 async function countUsers(env: Env): Promise<number> {
-  // #region agent log
-  const logCount1 = {location:'index.ts:108',message:'countUsers entry',data:{hasDB:!!env.DB,dbType:typeof env.DB},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'};
-  fetch('http://127.0.0.1:7243/ingest/d767ce96-12cd-489a-a0f5-5a7461b6091e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logCount1)}).catch(()=>{}); console.error('[DEBUG]', JSON.stringify(logCount1));
-  // #endregion
   try {
-    // #region agent log
-    const logCount2 = {location:'index.ts:111',message:'before DB.prepare',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'};
-    fetch('http://127.0.0.1:7243/ingest/d767ce96-12cd-489a-a0f5-5a7461b6091e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logCount2)}).catch(()=>{}); console.error('[DEBUG]', JSON.stringify(logCount2));
-    // #endregion
     const row = (await env.DB.prepare("SELECT COUNT(*) as c FROM users").first()) as { c?: number } | null;
-    // #region agent log
-    const logCount3 = {location:'index.ts:113',message:'after DB.prepare',data:{row,count:Number(row?.c ?? 0)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'};
-    fetch('http://127.0.0.1:7243/ingest/d767ce96-12cd-489a-a0f5-5a7461b6091e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logCount3)}).catch(()=>{}); console.error('[DEBUG]', JSON.stringify(logCount3));
-    // #endregion
     return Number(row?.c ?? 0);
   } catch (err) {
-    // #region agent log
-    const logCountErr = {location:'index.ts:121',message:'countUsers catch',data:{error:err instanceof Error?err.message:String(err),errorType:err?.constructor?.name,errString:String(err),errKeys:err?Object.keys(err):[]},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'};
-    fetch('http://127.0.0.1:7243/ingest/d767ce96-12cd-489a-a0f5-5a7461b6091e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logCountErr)}).catch(()=>{}); console.error('[DEBUG]', JSON.stringify(logCountErr));
-    // #endregion
     const errMsg = err instanceof Error ? err.message : String(err);
     if (errMsg.includes('no such table') || errMsg.includes('does not exist') || errMsg.includes('no table named')) {
       throw new HttpError(
         500,
-        "資料庫尚未初始化（缺少 tables）。請先執行 `wrangler d1 migrations apply DB --remote` 再重試。"
+        "資料庫尚未初始化（缺少 tables）。請先執行 `wrangler d1 migrations apply DB --local/--remote` 再重試。"
       );
     }
     throw new HttpError(500, `資料庫查詢錯誤：${errMsg}`);
@@ -197,33 +181,17 @@ async function getSession(env: Env, request: Request): Promise<AuthedSession | n
 }
 
 async function createSession(env: Env, userId: string): Promise<{ sessionId: string; csrfToken: string }> {
-  // #region agent log
-  const logData12 = {location:'index.ts:179',message:'createSession entry',data:{userId,hasDB:!!env.DB},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'I'};
-  fetch('http://127.0.0.1:7243/ingest/d767ce96-12cd-489a-a0f5-5a7461b6091e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logData12)}).catch(()=>{}); console.error('[DEBUG]', JSON.stringify(logData12));
-  // #endregion
   const sessionId = crypto.randomUUID();
   const csrfToken = base64UrlFromBytes(crypto.getRandomValues(new Uint8Array(32)));
   const ts = nowMs();
   const expiresAt = ts + SESSION_TTL_DAYS * 24 * 60 * 60 * 1000;
-  // #region agent log
-  const logData13 = {location:'index.ts:185',message:'before DB INSERT sessions',data:{sessionId,userId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'I'};
-  fetch('http://127.0.0.1:7243/ingest/d767ce96-12cd-489a-a0f5-5a7461b6091e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logData13)}).catch(()=>{}); console.error('[DEBUG]', JSON.stringify(logData13));
-  // #endregion
   try {
     await env.DB.prepare(
       "INSERT INTO sessions (id, user_id, csrf_token, created_at, last_seen_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)"
     )
       .bind(sessionId, userId, csrfToken, ts, ts, expiresAt)
       .run();
-    // #region agent log
-    const logData14 = {location:'index.ts:189',message:'after DB INSERT sessions',data:{success:true},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'I'};
-    fetch('http://127.0.0.1:7243/ingest/d767ce96-12cd-489a-a0f5-5a7461b6091e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logData14)}).catch(()=>{}); console.error('[DEBUG]', JSON.stringify(logData14));
-    // #endregion
   } catch (dbErr) {
-    // #region agent log
-    const logDataErr2 = {location:'index.ts:208',message:'DB INSERT sessions failed',data:{error:dbErr instanceof Error?dbErr.message:String(dbErr),errorType:dbErr?.constructor?.name,stack:dbErr instanceof Error?dbErr.stack:undefined},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'I'};
-    fetch('http://127.0.0.1:7243/ingest/d767ce96-12cd-489a-a0f5-5a7461b6091e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logDataErr2)}).catch(()=>{}); console.error('[DEBUG]', JSON.stringify(logDataErr2));
-    // #endregion
     throw new HttpError(500, `建立 session 失敗：${dbErr instanceof Error ? dbErr.message : String(dbErr)}`);
   }
   return { sessionId, csrfToken };
@@ -311,55 +279,21 @@ export default {
     try {
       // Bootstrap: allow /setup only if no users exist
       if (pathname === "/setup" && request.method === "GET") {
-        // #region agent log
-        fetch('http://127.0.0.1:7243/ingest/d767ce96-12cd-489a-a0f5-5a7461b6091e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.ts:273',message:'/setup GET entry',data:{hasEnv:!!env,hasDB:!!env?.DB,dbType:typeof env?.DB},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-        // #endregion
-        // #region agent log
-        fetch('http://127.0.0.1:7243/ingest/d767ce96-12cd-489a-a0f5-5a7461b6091e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.ts:274',message:'before countUsers',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-        // #endregion
         const existing = await countUsers(env);
-        // #region agent log
-        fetch('http://127.0.0.1:7243/ingest/d767ce96-12cd-489a-a0f5-5a7461b6091e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.ts:275',message:'after countUsers',data:{existing},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-        // #endregion
         if (existing > 0) return redirect("/login");
-        // #region agent log
-        fetch('http://127.0.0.1:7243/ingest/d767ce96-12cd-489a-a0f5-5a7461b6091e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.ts:276',message:'before renderLayout',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-        // #endregion
-        const html = renderLayout({
-          title: "初始化管理員",
-          body: renderSetupForm(),
-        });
-        // #region agent log
-        fetch('http://127.0.0.1:7243/ingest/d767ce96-12cd-489a-a0f5-5a7461b6091e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.ts:280',message:'after renderLayout',data:{htmlLength:html?.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-        // #endregion
-        return htmlResponse(html);
+        return htmlResponse(
+          renderLayout({
+            title: "初始化管理員",
+            body: renderSetupForm(),
+          })
+        );
       }
 
       if (pathname === "/setup" && request.method === "POST") {
-        // #region agent log
-        const logData1 = {location:'index.ts:310',message:'/setup POST entry',data:{hasEnv:!!env,hasDB:!!env?.DB,dbType:typeof env?.DB},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'};
-        fetch('http://127.0.0.1:7243/ingest/d767ce96-12cd-489a-a0f5-5a7461b6091e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logData1)}).catch(()=>{}); console.error('[DEBUG]', JSON.stringify(logData1));
-        // #endregion
-        // #region agent log
-        const logData2 = {location:'index.ts:311',message:'before countUsers POST',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'};
-        fetch('http://127.0.0.1:7243/ingest/d767ce96-12cd-489a-a0f5-5a7461b6091e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logData2)}).catch(()=>{}); console.error('[DEBUG]', JSON.stringify(logData2));
-        // #endregion
         const existing = await countUsers(env);
-        // #region agent log
-        const logData3 = {location:'index.ts:312',message:'after countUsers POST',data:{existing},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'};
-        fetch('http://127.0.0.1:7243/ingest/d767ce96-12cd-489a-a0f5-5a7461b6091e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logData3)}).catch(()=>{}); console.error('[DEBUG]', JSON.stringify(logData3));
-        // #endregion
         if (existing > 0) return redirect("/login");
 
-        // #region agent log
-        const logData4 = {location:'index.ts:314',message:'before readForm',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'};
-        fetch('http://127.0.0.1:7243/ingest/d767ce96-12cd-489a-a0f5-5a7461b6091e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logData4)}).catch(()=>{}); console.error('[DEBUG]', JSON.stringify(logData4));
-        // #endregion
         const form = await readForm(request);
-        // #region agent log
-        const logData5 = {location:'index.ts:315',message:'after readForm',data:{hasForm:!!form},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'};
-        fetch('http://127.0.0.1:7243/ingest/d767ce96-12cd-489a-a0f5-5a7461b6091e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logData5)}).catch(()=>{}); console.error('[DEBUG]', JSON.stringify(logData5));
-        // #endregion
         const email = normalizeEmail(getString(form, "email"));
         const displayName = getString(form, "display_name") || "Admin";
         const password = getString(form, "password");
@@ -369,37 +303,17 @@ export default {
         if (password.length < 8) throw new HttpError(400, "密碼至少 8 碼");
         if (password !== password2) throw new HttpError(400, "兩次輸入的密碼不一致");
 
-        // #region agent log
-        const logData6 = {location:'index.ts:324',message:'before hashPasswordNewSalt',data:{passwordLength:password.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'G'};
-        fetch('http://127.0.0.1:7243/ingest/d767ce96-12cd-489a-a0f5-5a7461b6091e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logData6)}).catch(()=>{}); console.error('[DEBUG]', JSON.stringify(logData6));
-        // #endregion
         const { salt, hash } = await hashPasswordNewSalt(password);
-        // #region agent log
-        const logData7 = {location:'index.ts:325',message:'after hashPasswordNewSalt',data:{hasSalt:!!salt,hasHash:!!hash},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'G'};
-        fetch('http://127.0.0.1:7243/ingest/d767ce96-12cd-489a-a0f5-5a7461b6091e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logData7)}).catch(()=>{}); console.error('[DEBUG]', JSON.stringify(logData7));
-        // #endregion
         const userId = crypto.randomUUID();
         const ts = nowMs();
-        // #region agent log
-        const logData8 = {location:'index.ts:327',message:'before DB INSERT users',data:{userId,email,hasDB:!!env.DB},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H'};
-        fetch('http://127.0.0.1:7243/ingest/d767ce96-12cd-489a-a0f5-5a7461b6091e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logData8)}).catch(()=>{}); console.error('[DEBUG]', JSON.stringify(logData8));
-        // #endregion
         try {
-          const result = await env.DB.prepare(
+          await env.DB.prepare(
             `INSERT INTO users (id, email, password_hash, password_salt, role, display_name, created_at)
              VALUES (?, ?, ?, ?, 'admin', ?, ?)`
           )
             .bind(userId, email, hash, salt, displayName, ts)
             .run();
-          // #region agent log
-          const logData9 = {location:'index.ts:332',message:'after DB INSERT users',data:{success:true,result},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H'};
-          fetch('http://127.0.0.1:7243/ingest/d767ce96-12cd-489a-a0f5-5a7461b6091e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logData9)}).catch(()=>{}); console.error('[DEBUG]', JSON.stringify(logData9));
-          // #endregion
         } catch (dbErr) {
-          // #region agent log
-          const logDataErr = {location:'index.ts:376',message:'DB INSERT users failed',data:{error:dbErr instanceof Error?dbErr.message:String(dbErr),errorType:dbErr?.constructor?.name,stack:dbErr instanceof Error?dbErr.stack:undefined,errorString:String(dbErr)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H'};
-          fetch('http://127.0.0.1:7243/ingest/d767ce96-12cd-489a-a0f5-5a7461b6091e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logDataErr)}).catch(()=>{}); console.error('[DEBUG]', JSON.stringify(logDataErr));
-          // #endregion
           const errMsg = dbErr instanceof Error ? dbErr.message : String(dbErr);
           if (errMsg.includes('no such table') || errMsg.includes('does not exist')) {
             throw new HttpError(500, "資料庫尚未初始化（缺少 tables）。請先執行 `wrangler d1 migrations apply DB --remote` 再重試。");
@@ -407,15 +321,7 @@ export default {
           throw new HttpError(500, `資料庫錯誤：${errMsg}`);
         }
 
-        // #region agent log
-        const logData10 = {location:'index.ts:334',message:'before createSession',data:{userId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'I'};
-        fetch('http://127.0.0.1:7243/ingest/d767ce96-12cd-489a-a0f5-5a7461b6091e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logData10)}).catch(()=>{}); console.error('[DEBUG]', JSON.stringify(logData10));
-        // #endregion
         const { sessionId, csrfToken } = await createSession(env, userId);
-        // #region agent log
-        const logData11 = {location:'index.ts:335',message:'after createSession',data:{hasSessionId:!!sessionId,hasCsrfToken:!!csrfToken},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'I'};
-        fetch('http://127.0.0.1:7243/ingest/d767ce96-12cd-489a-a0f5-5a7461b6091e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logData11)}).catch(()=>{}); console.error('[DEBUG]', JSON.stringify(logData11));
-        // #endregion
         const headers = new Headers();
         headers.append("set-cookie", setCookieHeader(SESSION_COOKIE_NAME, sessionId, { maxAgeSeconds: 60 * 60 * 24 * SESSION_TTL_DAYS }));
         headers.set("location", "/app");
@@ -683,6 +589,48 @@ export default {
               .bind(role, isActive, memberId)
               .run();
             return redirect(`/members/${memberId}`);
+          }
+
+          if (action === "delete") {
+            const isSelf = session.user.id === memberId;
+            const isAdmin = session.user.role === "admin";
+
+            // 权限检查：管理员可以删除任何人，成员只能删除自己
+            if (!isAdmin && !isSelf) throw new HttpError(403, "沒有權限刪除此成員");
+
+            // 获取要删除的成员信息
+            const memberRow = (await env.DB.prepare("SELECT role FROM users WHERE id = ? LIMIT 1")
+              .bind(memberId)
+              .first()) as { role: "admin" | "member" } | null;
+            if (!memberRow) throw new HttpError(404, "找不到成員");
+
+            // 如果要删除的是管理员，检查是否是最后一个管理员
+            if (memberRow.role === "admin") {
+              const adminCount = (await env.DB.prepare("SELECT COUNT(*) as c FROM users WHERE role = 'admin' AND is_active = 1")
+                .first()) as { c?: number } | null;
+              const count = Number(adminCount?.c ?? 0);
+              if (count <= 1) {
+                throw new HttpError(400, "無法刪除最後一個管理員");
+              }
+            }
+
+            // 删除该用户的所有 sessions
+            await env.DB.prepare("DELETE FROM sessions WHERE user_id = ?").bind(memberId).run();
+
+            // 将用户标记为 inactive（软删除）
+            await env.DB.prepare("UPDATE users SET is_active = 0 WHERE id = ?").bind(memberId).run();
+
+            // 如果用户自己删除，登出并重定向到登录页面
+            if (isSelf) {
+              await deleteSession(env, session.sessionId);
+              const headers = new Headers();
+              headers.append("set-cookie", setCookieHeader(SESSION_COOKIE_NAME, "", { expireNow: true }));
+              headers.set("location", "/login");
+              return new Response(null, { status: 302, headers });
+            }
+
+            // 管理员删除其他成员，重定向到成员列表
+            return redirect("/members");
           }
 
           throw new HttpError(400, "未知操作");
@@ -1122,11 +1070,7 @@ export default {
         let session: AuthedSession | null = null;
         try {
           session = await getSession(env, request);
-        } catch (sessionErr) {
-          // #region agent log
-          const sessionErrLog = {location:'index.ts:1115',message:'getSession failed in error handler',data:{error:sessionErr instanceof Error?sessionErr.message:String(sessionErr)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'J'};
-          fetch('http://127.0.0.1:7243/ingest/d767ce96-12cd-489a-a0f5-5a7461b6091e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(sessionErrLog)}).catch(()=>{}); console.error('[DEBUG]', JSON.stringify(sessionErrLog));
-          // #endregion
+        } catch {
           // Ignore session errors in error handler
         }
         const body = `
@@ -1150,11 +1094,6 @@ export default {
           { status: err.status }
         );
       }
-      // #region agent log
-      const catchLogData = {location:'index.ts:1112',message:'catch block - unhandled error',data:{error:err instanceof Error?err.message:String(err),errorType:err?.constructor?.name,stack:err instanceof Error?err.stack:undefined,pathname,isHttpError:err instanceof HttpError,errString:String(err),errKeys:err?Object.keys(err):[]},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'};
-      fetch('http://127.0.0.1:7243/ingest/d767ce96-12cd-489a-a0f5-5a7461b6091e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(catchLogData)}).catch(()=>{}); 
-      console.error('[DEBUG] CATCH BLOCK:', JSON.stringify(catchLogData));
-      // #endregion
       return htmlResponse(
         renderLayout({
           title: "伺服器錯誤",
@@ -1162,7 +1101,6 @@ export default {
             <h1>500</h1>
             <div class="card">
               <div class="muted">發生未預期錯誤</div>
-              <div style="margin-top: 12px; font-size: 12px; color: rgba(255,255,255,0.5);">${escapeHtml(err instanceof Error ? err.message : String(err))}</div>
               <div style="margin-top: 12px"><a class="btn btn--primary" href="/">回首頁</a></div>
             </div>
           `,
@@ -1289,6 +1227,13 @@ function renderMembersList(args: {
   const rows = args.users
     .map((u) => {
       const status = u.is_active ? `<span class="pill pill--green">active</span>` : `<span class="pill pill--red">inactive</span>`;
+      const deleteBtn = `
+        <form method="post" action="/members/${escapeHtml(u.id)}" style="margin:0; display:inline;" onsubmit="return confirm('確定要移除此成員嗎？此操作無法復原。');">
+          <input type="hidden" name="csrf" value="${escapeHtml(args.csrfToken)}" />
+          <input type="hidden" name="action" value="delete" />
+          <button class="btn btn--small btn--danger" type="submit">移除</button>
+        </form>
+      `;
       return `
         <tr>
           <td><a href="/members/${escapeHtml(u.id)}"><strong>${escapeHtml(u.display_name)}</strong></a></td>
@@ -1296,6 +1241,7 @@ function renderMembersList(args: {
           <td><span class="${pillForStatus(u.role)}">${escapeHtml(u.role)}</span></td>
           <td>${status}</td>
           <td class="muted">${escapeHtml(new Date(u.created_at).toLocaleString("zh-TW", { hour12: false }))}</td>
+          <td>${deleteBtn}</td>
         </tr>
       `;
     })
@@ -1309,7 +1255,7 @@ function renderMembersList(args: {
     </div>
     <div class="card">
       <table>
-        <thead><tr><th>名稱</th><th>Email</th><th>角色</th><th>狀態</th><th>建立時間</th></tr></thead>
+        <thead><tr><th>名稱</th><th>Email</th><th>角色</th><th>狀態</th><th>建立時間</th><th>操作</th></tr></thead>
         <tbody>${rows || ""}</tbody>
       </table>
       ${rows ? "" : `<div class="muted" style="margin-top: 10px;">尚無成員。</div>`}
@@ -1468,6 +1414,18 @@ function renderMemberDetail(args: {
         `
         : ""
     }
+
+    <h2>危險操作</h2>
+    <div class="card">
+      <div class="muted" style="margin-bottom: 10px;">
+        ${isSelf ? "移除自己的帳號後，您將被登出並無法再登入此帳號。" : canAdmin ? "移除此成員後，該成員將無法再登入系統。" : ""}
+      </div>
+      <form method="post" action="/members/${escapeHtml(member.id)}" onsubmit="return confirm('確定要移除此成員嗎？此操作無法復原。');">
+        <input type="hidden" name="csrf" value="${escapeHtml(csrfToken)}" />
+        <input type="hidden" name="action" value="delete" />
+        <button class="btn btn--danger" type="submit">${isSelf ? "移除我的帳號" : "移除成員"}</button>
+      </form>
+    </div>
   `;
 }
 
